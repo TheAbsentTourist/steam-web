@@ -22,7 +22,7 @@ Validated with Ajv 2020-12 (`ajv@8` installed only under `/tmp/steam-web-verify`
 | `plugin.json` | **PASS** (`$id` `https://agent-plugins.org/schemas/1.0.0/plugin.schema.json`) |
 | `mcp.json` | **PASS** (`$id` `https://agent-plugins.org/schemas/1.0.0/mcp.schema.json`) |
 
-`plugin.json` uses the closed 1.0.0 field set (`author` is an object). `mcp.json` has no secret placeholders.
+`plugin.json` uses the closed 1.0.0 field set (`author` is an object). `mcp.json` interpolates `${STEAM_WEB_API_KEY}` and `${STEAM_ID}` from the host environment; those are placeholders, not committed secrets.
 
 ## 2. Syntax
 

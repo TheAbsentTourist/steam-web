@@ -1,10 +1,10 @@
 {
   "name": "steam-web",
+  "displayName": "Steam Web",
   "version": "0.2.0",
   "description": "Unofficial Steam Web API reader: library, playtime, achievements, friends, profiles, workshop, trades, and official catalog. Not affiliated with Valve.",
   "author": {
     "name": "TheAbsentTourist",
-    "url": "https://github.com/TheAbsentTourist",
     "email": "chucktastictime@gmail.com"
   },
   "license": "MIT",
@@ -34,5 +34,6 @@
     ]
   },
   "homepage": "https://github.com/TheAbsentTourist/steam-web",
-  "repository": "https://github.com/TheAbsentTourist/steam-web"
+  "repository": "https://github.com/TheAbsentTourist/steam-web",
+  "mcpServers": "./mcp.json"
 }
