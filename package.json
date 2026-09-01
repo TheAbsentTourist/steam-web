@@ -1,0 +1,19 @@
+{
+  "name": "steam-web",
+  "version": "0.2.0",
+  "private": false,
+  "type": "module",
+  "description": "Unofficial Steam Web API reader plugin. Not affiliated with Valve.",
+  "engines": {
+    "node": ">=18"
+  },
+  "repository": {
+    "type": "git",
+    "url": "https://github.com/TheAbsentTourist/steam-web.git"
+  },
+  "bugs": {
+    "url": "https://github.com/TheAbsentTourist/steam-web/issues"
+  },
+  "homepage": "https://github.com/TheAbsentTourist/steam-web#readme",
+  "author": "TheAbsentTourist"
+}

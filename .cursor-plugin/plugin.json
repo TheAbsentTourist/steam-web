@@ -1,0 +1,37 @@
+{
+  "name": "steam-web",
+  "version": "0.2.0",
+  "description": "Unofficial Steam Web API reader: library, playtime, achievements, friends, profiles, workshop, trades, and official catalog. Not affiliated with Valve.",
+  "author": {
+    "name": "TheAbsentTourist",
+    "url": "https://github.com/TheAbsentTourist"
+  },
+  "license": "MIT",
+  "keywords": [
+    "steam",
+    "games",
+    "library",
+    "achievements"
+  ],
+  "logo": "assets/logo.png",
+  "variables": {
+    "type": "object",
+    "properties": {
+      "STEAM_WEB_API_KEY": {
+        "type": "string",
+        "title": "Steam Web API key",
+        "description": "From https://steamcommunity.com/dev/apikey (user key). Stored locally on the installer machine. Never committed."
+      },
+      "STEAM_ID": {
+        "type": "string",
+        "title": "Default SteamID64",
+        "description": "Optional 64-bit SteamID used when a tool omits steamid. Leave blank if you will pass steamid per call."
+      }
+    },
+    "required": [
+      "STEAM_WEB_API_KEY"
+    ]
+  },
+  "homepage": "https://github.com/TheAbsentTourist/steam-web",
+  "repository": "https://github.com/TheAbsentTourist/steam-web"
+}

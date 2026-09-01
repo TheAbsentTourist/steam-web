@@ -1,0 +1,15 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/mcp.schema.json",
+  "mcpServers": {
+    "steam-web": {
+      "type": "stdio",
+      "command": "node",
+      "args": ["./server.mjs"],
+      "cwd": "${PLUGIN_ROOT}",
+      "env": {
+        "STEAM_WEB_API_KEY": "${STEAM_WEB_API_KEY}",
+        "STEAM_ID": "${STEAM_ID}"
+      }
+    }
+  }
+}

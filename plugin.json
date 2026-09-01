@@ -1,0 +1,19 @@
+{
+  "$schema": "https://agent-plugins.org/schemas/1.0.0/plugin.schema.json",
+  "name": "steam-web",
+  "version": "0.2.0",
+  "description": "Unofficial Steam Web API reader: library, playtime, achievements, friends, profiles, workshop, trades, and official catalog. Not affiliated with Valve.",
+  "author": {
+    "name": "TheAbsentTourist",
+    "url": "https://github.com/TheAbsentTourist"
+  },
+  "homepage": "https://github.com/TheAbsentTourist/steam-web",
+  "repository": "https://github.com/TheAbsentTourist/steam-web",
+  "license": "MIT",
+  "keywords": [
+    "steam",
+    "games",
+    "library",
+    "achievements"
+  ]
+}
