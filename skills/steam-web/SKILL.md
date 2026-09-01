@@ -1,7 +1,7 @@
 ---
 name: steam-web
 description: >
-  Use when the user asks about a household Steam library, playtime, Steam level,
+  Use when the user asks about a Steam library, playtime, Steam level,
   badges, achievements, user stats, friends, VAC/community bans, player profiles,
   vanity URLs, official app news, current player counts, global achievement
   rarity, store catalog appids, dedicated servers at an IP, version up-to-date
