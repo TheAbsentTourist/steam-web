@@ -111,8 +111,9 @@ Do not put those values in the git repo.
 
 ## Contact and support
 
-- Issues: https://github.com/TheAbsentTourist/steam-web/issues
 - Author: [TheAbsentTourist](https://github.com/TheAbsentTourist)
+- Email: chucktastictime@gmail.com
+- Issues: https://github.com/TheAbsentTourist/steam-web/issues
 
 This is a community plugin. Best-effort GitHub issues; no SLA.
 

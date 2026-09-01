@@ -25,4 +25,6 @@ Steam data Valve holds is also covered by [Valve’s privacy policy](https://www
 
 ## Contact
 
-Open an issue on the GitHub repository for this plugin.
+Contact: chucktastictime@gmail.com
+
+Issues: https://github.com/TheAbsentTourist/steam-web/issues

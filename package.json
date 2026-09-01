@@ -12,8 +12,13 @@
     "url": "https://github.com/TheAbsentTourist/steam-web.git"
   },
   "bugs": {
-    "url": "https://github.com/TheAbsentTourist/steam-web/issues"
+    "url": "https://github.com/TheAbsentTourist/steam-web/issues",
+    "email": "chucktastictime@gmail.com"
   },
   "homepage": "https://github.com/TheAbsentTourist/steam-web#readme",
-  "author": "TheAbsentTourist"
+  "author": {
+    "name": "TheAbsentTourist",
+    "email": "chucktastictime@gmail.com",
+    "url": "https://github.com/TheAbsentTourist"
+  }
 }
