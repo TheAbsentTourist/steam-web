@@ -1,6 +1,6 @@
 # VERIFY
 
-Proven in this VM on 2026-09-01. Commands run from the plugin root (`/workspace` here; locally, the real directory `~/.cursor/plugins/local/steam-web`, not a symlink).
+Proven in this VM on 2026-09-02. Commands run from the plugin root (`/workspace` here; locally, the real directory `~/.cursor/plugins/local/steam-web`, not a symlink).
 
 ## Environment
 
