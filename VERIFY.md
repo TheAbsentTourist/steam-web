@@ -51,7 +51,7 @@ The script:
 | initialize `serverInfo.name` = `steam-web` | **PASS** |
 | `protocolVersion` | `2024-11-05` |
 | `tools/list` includes `steam_get_news` (28 tools) | **PASS** |
-| MCP title also on `api.steampowered.com` | **PASS** — (filled after smoke) |
+| MCP title also on `api.steampowered.com` | **PASS** — `Australian Hightower Highjinx 2026` |
 
 ## 4. MCP launcher (offline)
 
@@ -61,7 +61,7 @@ node scripts/mcp-path-test.mjs
 
 Asserts `command` is `node` with `args` `["./server.mjs"]` (not `/bin/sh` / `${NODE}` / `${PLUGIN_ROOT}/bin/steam-web-mcp` / a linuxbrew PATH), `.cursor-plugin/plugin.json` does not require `NODE`, `bin/steam-web-mcp` and `scripts/build-mcp` are absent, initialize works via `node ./server.mjs`, and `scripts/run-mcp` is an optional terminal helper that `exec node`s `server.mjs`.
 
-**PASS** (filled after test)
+**PASS**
 
 ## Cannot prove here
 
