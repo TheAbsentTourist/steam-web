@@ -256,7 +256,6 @@ async function steamRequest({ iface, method, version, params = {}, http = "GET",
       url.search = form.toString();
       res = await fetch(url, { method: "GET", signal: ac.signal });
     }
-    if (res.status === 401 || res.status === 403) return { private: true, status: res.status };
     const text = await res.text();
     const parsed = parseJsonLoose(text);
     if (!res.ok) return { fail: true, status: res.status, text, body: parsed };
@@ -384,9 +383,9 @@ function slimPublishedFile(f) {
     "views",
     "lifetime_subscriptions",
     "lifetime_favorited",
-    "result",
   ]);
   if (f.publishedfileid != null) out.publishedfileid = String(f.publishedfileid);
+  if (f.result != null) out.result = decodeEResult(f.result);
   if (Array.isArray(f.tags)) out.tags = f.tags.map((t) => (typeof t === "string" ? t : t.tag)).filter(Boolean);
   applyEresult(out, f.result);
   return out;
@@ -1428,6 +1427,33 @@ async function getCollectionDetails(args) {
     return { payload: { collections: [] } };
   }
   return { payload: { collections: details.map(slimCollection) } };
+}
+
+async function ugcIdFromPublishedFile(publishedfileid) {
+  const r = await steamPost("ISteamRemoteStorage", "GetPublishedFileDetails", 1, {
+    itemcount: 1,
+    publishedfileids: [String(publishedfileid)],
+  });
+  if (r.private) return { private: true };
+  if (r.fail) return { fail: r };
+  const item = r.body?.response?.publishedfiledetails?.[0];
+  if (!item) return { missing: true };
+  if (Number(item.result) === 9) return { fileNotFound: true };
+  const ugcid = item.hcontent_file ?? item.ugcid;
+  if (ugcid == null || ugcid === "") return { missing: true };
+  return { ugcid: String(ugcid) };
+}
+
+function ugcLookupError(r) {
+  const statusCode = ugcStatusCode(r);
+  if (statusCode === 9) return fileNotFound("UGC file not found");
+  if (r.status === 404) return notFound("UGC file not found");
+  if (r.private && (r.status === 401 || r.status === 403)) {
+    return { payload: privateResult("UGC file details forbidden or unavailable") };
+  }
+  if (r.fail) return httpFail(r);
+  if (r.private) return { payload: privateResult("UGC file details forbidden or unavailable") };
+  return null;
 }
 
 async function getUgcFileDetails(args) {
