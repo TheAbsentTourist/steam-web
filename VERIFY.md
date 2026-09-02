@@ -66,8 +66,8 @@ Asserts `command` is `node` with `args` `["./server.mjs"]` (not `/bin/sh` / `${N
 ## Cannot prove here
 
 - Cursor **Customize** UI / local plugin loader on a user machine (`~/.cursor/plugins/local/steam-web` as a real directory, not a symlink)
-- Windows Cursor inheriting `node` on PATH after the official installer (fully quit Cursor after install)
-- Linux Cursor AppImage / Flatpak stdio MCP (not supported: spawn ENOENT even for an existing host binary)
+- Windows Cursor inheriting `node` on PATH after the official installer (`where node` in cmd.exe shows `C:\Program Files\nodejs\node.exe`; fully quit Cursor after install)
+- Linux Cursor AppImage / Flatpak stdio MCP (not supported)
 - Host injection of `PLUGIN_ROOT` / `PLUGIN_DATA`
 - Keyed tools (`STEAM_WEB_API_KEY` absent): library, friends, achievements, trades, Workshop search, `IStoreService/GetAppList`
 - Private-profile `401`/`403` → `private_or_unavailable` against a real hidden profile
