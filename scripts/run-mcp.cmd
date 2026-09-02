@@ -1,7 +1,9 @@
 @echo off
 setlocal EnableExtensions
-REM Cursor spawn (Windows-first): mcp.json command cmd.exe, args /d /c call scripts\run-mcp.cmd
-REM Do not write to stdout — MCP uses stdio. Errors to stderr only.
+REM Optional Windows terminal helper. NOT the Cursor mcp.json spawn.
+REM Public mcp.json is command node, args ./server.mjs until Cursor's
+REM Windows plugin MCP host is fixed. Do not write to stdout if you
+REM pipe this helper into MCP stdio. Errors to stderr only.
 call "%~dp0find-node.cmd"
 if errorlevel 1 exit /b 1
 if defined NODE goto :run
