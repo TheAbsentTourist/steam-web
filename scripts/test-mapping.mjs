@@ -21,9 +21,9 @@ if (SERVER_INFO.version !== "0.2.3") {
   process.exit(1);
 }
 
-eq(parseVanityInput("gaben"), { vanity: "gaben" }, "bare vanity slug");
-eq(parseVanityInput("https://steamcommunity.com/id/gaben/"), { vanity: "gaben", url_type: 1 }, "full /id/ URL");
-eq(parseVanityInput("steamcommunity.com/groups/Valve"), { vanity: "Valve", url_type: 2 }, "host /groups/");
+eq(parseVanityInput("gaben"), { vanityurl: "gaben" }, "bare vanity slug");
+eq(parseVanityInput("https://steamcommunity.com/id/gaben/"), { vanityurl: "gaben", url_type: 1 }, "full /id/ URL");
+eq(parseVanityInput("steamcommunity.com/groups/Valve"), { vanityurl: "Valve", url_type: 2 }, "host /groups/");
 eq(
   parseVanityInput("https://steamcommunity.com/profiles/76561198000000000"),
   { steamid: "76561198000000000" },
@@ -92,7 +92,8 @@ scripted.push({
   body: { response: { result: 1, publishedfiledetails: [{ publishedfileid: "9", result: 9 }] } },
 });
 const pub = await run("steam_get_published_file_details", { publishedfileids: "9" });
-eq(pub.payload.files?.[0]?.result, "file_not_found", "published file eresult 9");
+eq(pub.payload.files?.[0]?.result, 9, "published file eresult 9");
+eq(pub.payload.files?.[0]?.result_name, "file_not_found", "published file eresult 9 name");
 eq(pub.payload.error, undefined, "item 9 is not whole-payload private");
 
 scripted.push({ status: 200, body: { response: { total: 0, publishedfiledetails: [] } } });
@@ -215,7 +216,7 @@ delete process.env.STEAM_ID;
 scripted.push({ status: 200, body: { response: { success: false, error: "Couldn't get app info for the app specified." } } });
 const outdated = await run("steam_up_to_date_check", { appid: 1, version: 1 });
 eq(outdated.payload.success, false, "Valve success:false passed through");
-eq(outdated.payload.error, "Couldn't get app info for the app specified.", "success:false not private");
+eq(outdated.payload.error, undefined, "success:false not private");
 
 if (calls.some((c) => /GetSchemaForGame/.test(c.href))) {
   console.error("FAIL up-to-date must not call GetSchemaForGame");
