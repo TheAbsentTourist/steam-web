@@ -1,8 +1,9 @@
 #!/usr/bin/env node
 /**
  * Offline mcp.json launcher checks. No Steam, no secrets.
- * Proves Cursor spawn() looks up ./scripts/run-mcp (not bare `node`) and
- * that the posix launcher finds Node even when PATH has none.
+ * Proves Cursor spawn() uses /bin/sh with ./scripts/run-mcp (not a relative
+ * command, not bare `node`) so Linux AppImage does not ENOENT, and that the
+ * posix launcher finds Node even when PATH has none.
  */
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
@@ -15,11 +16,12 @@ const mcp = JSON.parse(readFileSync(join(root, "mcp.json"), "utf8"));
 const server = mcp.mcpServers?.["steam-web"];
 assert.ok(server, "steam-web server missing from mcp.json");
 
-assert.equal(server.command, "./scripts/run-mcp");
+assert.equal(server.command, "/bin/sh");
+assert.notEqual(server.command, "./scripts/run-mcp");
 assert.notEqual(server.command, "node");
 assert.notEqual(server.command, "cmd.exe");
 assert.notEqual(server.command, "node.exe");
-assert.ok(!server.args, "launcher execs server.mjs; do not pass ./server.mjs as spawn args");
+assert.deepEqual(server.args, ["./scripts/run-mcp"]);
 assert.equal(server.cwd, "${PLUGIN_ROOT}");
 assert.equal(server.env?.STEAM_WEB_API_KEY, "${STEAM_WEB_API_KEY}");
 assert.equal(server.env?.STEAM_ID, "${STEAM_ID}");
@@ -57,7 +59,7 @@ function frame(obj) {
 
 function spawnLauncher(env, { expectFail = false } = {}) {
   return new Promise((resolve, reject) => {
-    const child = spawn(posix, [], {
+    const child = spawn("/bin/sh", ["./scripts/run-mcp"], {
       cwd: root,
       env,
       stdio: ["pipe", "pipe", "pipe"],
@@ -123,8 +125,33 @@ function spawnLauncher(env, { expectFail = false } = {}) {
   });
 }
 
-const baseEnv = { ...process.env };
-await spawnLauncher(baseEnv);
+function spawnRelativeCommandIgnoringOptionsCwd() {
+  return new Promise((resolve, reject) => {
+    const child = spawn("./scripts/run-mcp", [], {
+      cwd: root,
+      env: { ...process.env },
+      stdio: "ignore",
+    });
+    child.on("error", (err) => {
+      if (err.code === "ENOENT") resolve();
+      else reject(err);
+    });
+    child.on("spawn", () => {
+      child.kill();
+      reject(new Error("relative ./scripts/run-mcp must ENOENT when process.cwd() is not PLUGIN_ROOT"));
+    });
+  });
+}
+
+const prevCwd = process.cwd();
+process.chdir("/tmp");
+try {
+  await spawnRelativeCommandIgnoringOptionsCwd();
+  const baseEnv = { ...process.env };
+  await spawnLauncher(baseEnv);
+} finally {
+  process.chdir(prevCwd);
+}
 
 const stripped = { ...process.env, PATH: "/usr/sbin:/sbin" };
 await spawnLauncher(stripped);

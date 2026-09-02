@@ -53,7 +53,7 @@ That is a Cursor local-plugin limitation, not a steam-web defect. If you already
 
 Then **Developer: Reload Window**. **Customize** should show Steam Web (plugin) and steam-web (MCP/skill). Set `STEAM_WEB_API_KEY` and optional `STEAM_ID` under **Plugins → Configure** (or the host environment / `$PLUGIN_DATA/config.json`).
 
-Cursor spawn does not use your terminal PATH (Flatpak/Bazzite especially). The plugin launcher searches well-known Node installs. You still need Node 18+ actually installed on the machine (brew / rpm-ostree / official installer), not only inside a toolbox.
+Cursor spawn does not resolve `./scripts/run-mcp` against cwd PLUGIN_ROOT (Linux AppImage `spawn ./scripts/run-mcp ENOENT`); mcp.json runs `/bin/sh` with that script as the argument. The launcher still searches well-known Node installs. You still need Node 18+ actually installed on the machine (brew / rpm-ostree / official installer), not only inside a toolbox.
 
 On Teams/Enterprise, local plugin imports may be disabled by admin policy.
 
