@@ -13,7 +13,7 @@ import {
   SERVER_INFO,
 } from "../server.mjs";
 
-assert.equal(SERVER_INFO.version, "0.2.4");
+assert.equal(SERVER_INFO.version, "0.2.5");
 
 const vanityUrl = parseVanityInput("https://steamcommunity.com/id/ExampleUser/");
 assert.equal(vanityUrl.vanityurl, "ExampleUser");

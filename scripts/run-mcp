@@ -1,5 +1,6 @@
 #!/bin/sh
 # Optional Unix helper. Cursor on Windows uses ./scripts/run-mcp.cmd (mcp.json).
+# mcp.json omits cwd (spec default = plugin root); do not use ${PLUGIN_ROOT}.
 # macOS/Linux Cursor may temporarily override command to node ./server.mjs.
 # Grok Bot already runs node …/server.mjs directly.
 # Builtins only for path math so a Flatpak PATH without coreutils still works.

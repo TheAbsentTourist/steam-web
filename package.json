@@ -1,6 +1,6 @@
 {
   "name": "steam-web",
-  "version": "0.2.4",
+  "version": "0.2.5",
   "private": false,
   "type": "module",
   "description": "Unofficial Steam Web API reader plugin. Not affiliated with Valve.",
