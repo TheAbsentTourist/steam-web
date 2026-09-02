@@ -59,7 +59,7 @@ When an id is unknown, prefer the optional gathering below. Do not invent dummy 
 
 - Store catalog appids (not prices, not search) → `steam_get_app_list` (`last_appid` to page)
 - Game servers at an IP → `steam_get_servers_at_address` (`addr` required). Player summaries do not include a dedicated-server IP; do not invent one.
-- Is this install current? → `steam_up_to_date_check` (`appid`; `version` optional — omit it to read numeric `gameVersion` from GetSchemaForGame/v2). Valve `success: false` (version not current / invalid) is passed through, not private.
+- Is this install current? → `steam_up_to_date_check` (`appid` and numeric installed depot `version` required). Do not invent `version` from GetSchemaForGame. Missing, empty, or non-numeric `version` → `invalid_arguments`. Valve `success: false` for a real version is passed through, not private.
 - Web API clock → `steam_get_server_info` (no key)
 - Official method catalog → `steam_get_supported_api_list` (optional key shows more)
 

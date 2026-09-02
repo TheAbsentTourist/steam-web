@@ -10,7 +10,7 @@ import { stdin, stdout } from "node:process";
 import { pathToFileURL } from "node:url";
 
 const PROTOCOL_VERSION = "2024-11-05";
-const SERVER_INFO = { name: "steam-web", version: "0.2.1" };
+const SERVER_INFO = { name: "steam-web", version: "0.2.2" };
 const API_HOST = "https://api.steampowered.com";
 const TIMEOUT_MS = 15_000;
 const KEY_HELP =
@@ -78,6 +78,7 @@ function fileNotFound(message, extra = {}) {
 }
 
 function httpFail(r) {
+  if (isForbidden(r)) return { payload: privateResult("Forbidden or unavailable") };
   return { isError: true, payload: { error: "http_error", message: r.text || "Steam Web API request failed", status: r.status } };
 }
 
@@ -101,6 +102,13 @@ function eresultName(code) {
   if (n === ERESULT_OK) return "ok";
   if (n === ERESULT_FILE_NOT_FOUND) return "file_not_found";
   return undefined;
+}
+
+function decodeEResult(code) {
+  const name = eresultName(code);
+  if (name) return name;
+  const n = Number(code);
+  return Number.isFinite(n) ? n : code;
 }
 
 function applyEresult(obj, code) {
@@ -258,6 +266,9 @@ async function steamRequest({ iface, method, version, params = {}, http = "GET",
     }
     const text = await res.text();
     const parsed = parseJsonLoose(text);
+    if (res.status === 401 || res.status === 403) {
+      return { private: true, status: res.status, text, body: parsed };
+    }
     if (!res.ok) return { fail: true, status: res.status, text, body: parsed };
     if (!text.trim()) return { private: true, status: res.status, empty: true };
     if (!parsed) return { fail: true, status: res.status, text: "invalid JSON from Steam Web API" };
@@ -589,17 +600,17 @@ const TOOLS = [
   {
     name: "steam_up_to_date_check",
     description:
-      "ISteamApps/UpToDateCheck/v1. Whether an installed version is current. Omit version to read numeric gameVersion from GetSchemaForGame/v2 (user key). Valve success:false is passed through, not private. No key when version is set.",
+      "ISteamApps/UpToDateCheck/v1. Whether an installed depot version is current. Requires a real numeric version — do not invent one from GetSchemaForGame. Valve success:false is passed through, not private. No key.",
     inputSchema: {
       type: "object",
       properties: {
         appid: appidProp,
         version: {
           type: "number",
-          description: "Installed version. If omitted, uses numeric gameVersion from GetSchemaForGame/v2 when present.",
+          description: "Installed depot version (numeric). Required; do not invent from GetSchemaForGame.",
         },
       },
-      required: ["appid"],
+      required: ["appid", "version"],
     },
   },
   {
@@ -863,7 +874,7 @@ async function getProfile(args) {
   const ids = resolveSteamId(args, "steamids");
   if (ids.error) return invalid(ids.message);
   const r = await steamGet("ISteamUser", "GetPlayerSummaries", 2, { key: keyed.key, steamids: ids.steamid });
-  if (r.private) return { payload: privateResult("Player summaries forbidden or unavailable") };
+  if (isForbidden(r) || r.private) return { payload: privateResult("Player summaries forbidden or unavailable") };
   if (r.fail) return httpFail(r);
   const players = r.body?.response?.players;
   if (!Array.isArray(players) || players.length === 0) {
@@ -878,7 +889,7 @@ async function getPlayerBans(args) {
   const ids = resolveSteamId(args, "steamids");
   if (ids.error) return invalid(ids.message);
   const r = await steamGet("ISteamUser", "GetPlayerBans", 1, { key: keyed.key, steamids: ids.steamid });
-  if (r.private) return { payload: privateResult("Player bans forbidden or unavailable") };
+  if (isForbidden(r) || r.private) return { payload: privateResult("Player bans forbidden or unavailable") };
   if (r.fail) return httpFail(r);
   const players = r.body?.players;
   if (!Array.isArray(players) || players.length === 0) {
@@ -897,7 +908,7 @@ async function getFriends(args) {
     steamid: id.steamid,
     relationship: present(args?.relationship) ? args.relationship : "friend",
   });
-  if (r.private) return { payload: privateResult("Friend list forbidden or unavailable") };
+  if (isForbidden(r) || r.private) return { payload: privateResult("Friend list forbidden or unavailable") };
   if (r.fail) return httpFail(r);
   const friends = r.body?.friendslist?.friends;
   if (!Array.isArray(friends) || friends.length === 0) {
@@ -924,7 +935,7 @@ async function getOwnedGames(args) {
   const filter = asIdList(args?.appids_filter).map(Number).filter(Number.isFinite);
   if (filter.length) params.appids_filter = filter;
   const r = await steamGet("IPlayerService", "GetOwnedGames", 1, params, true);
-  if (r.private) return { payload: privateResult("Owned games forbidden or unavailable") };
+  if (isForbidden(r) || r.private) return { payload: privateResult("Owned games forbidden or unavailable") };
   if (r.fail) return httpFail(r);
   const games = r.body?.response?.games;
   if (!Array.isArray(games) || games.length === 0) {
@@ -941,7 +952,7 @@ async function getRecentlyPlayed(args) {
   const params = { key: keyed.key, steamid: id.steamid };
   if (present(args?.count)) params.count = asNum(args.count);
   const r = await steamGet("IPlayerService", "GetRecentlyPlayedGames", 1, params, true);
-  if (r.private) return { payload: privateResult("Recently played games forbidden or unavailable") };
+  if (isForbidden(r) || r.private) return { payload: privateResult("Recently played games forbidden or unavailable") };
   if (r.fail) return httpFail(r);
   const games = r.body?.response?.games;
   if (!Array.isArray(games)) {
@@ -956,7 +967,7 @@ async function getSteamLevel(args) {
   const id = resolveSteamId(args);
   if (id.error) return invalid(id.message);
   const r = await steamGet("IPlayerService", "GetSteamLevel", 1, { key: keyed.key, steamid: id.steamid }, true);
-  if (r.private) return { payload: privateResult("Steam level forbidden or unavailable") };
+  if (isForbidden(r) || r.private) return { payload: privateResult("Steam level forbidden or unavailable") };
   if (r.fail) return httpFail(r);
   const level = r.body?.response?.player_level;
   if (level == null) return { payload: privateResult("Steam level unavailable") };
@@ -969,7 +980,7 @@ async function getBadges(args) {
   const id = resolveSteamId(args);
   if (id.error) return invalid(id.message);
   const r = await steamGet("IPlayerService", "GetBadges", 1, { key: keyed.key, steamid: id.steamid }, true);
-  if (r.private) return { payload: privateResult("Badges forbidden or unavailable") };
+  if (isForbidden(r) || r.private) return { payload: privateResult("Badges forbidden or unavailable") };
   if (r.fail) return httpFail(r);
   const resp = r.body?.response;
   if (!resp || !Array.isArray(resp.badges)) return { payload: privateResult("Badges unavailable") };
@@ -1038,7 +1049,7 @@ async function getAchievements(args) {
   const params = { key: keyed.key, steamid: id.steamid, appid };
   if (present(args.l)) params.l = args.l;
   const r = await steamGet("ISteamUserStats", "GetPlayerAchievements", 1, params);
-  if (r.private) return { payload: privateResult("Achievements forbidden or unavailable") };
+  if (isForbidden(r) || r.private) return { payload: privateResult("Achievements forbidden or unavailable") };
   if (r.fail) return httpFail(r);
   const stats = r.body?.playerstats;
   if (!stats || stats.success === false) {
@@ -1073,7 +1084,7 @@ async function getUserStats(args) {
     steamid: id.steamid,
     appid: asNum(args.appid),
   });
-  if (r.private) return { payload: privateResult("User stats forbidden or unavailable") };
+  if (isForbidden(r) || r.private) return { payload: privateResult("User stats forbidden or unavailable") };
   if (r.fail) return httpFail(r);
   const ps = r.body?.playerstats;
   if (!ps) return { payload: privateResult("User stats unavailable") };
@@ -1219,22 +1230,9 @@ async function getServersAtAddress(args) {
 async function upToDateCheck(args) {
   const bad = needAppid(args);
   if (bad) return bad;
-  let version = present(args?.version) ? asNum(args.version) : undefined;
+  const version = present(args?.version) ? asNum(args.version) : undefined;
   if (version == null) {
-    const keyed = requireKey();
-    if (keyed.error) {
-      return invalid("version is required (or set STEAM_WEB_API_KEY to read gameVersion from GetSchemaForGame)");
-    }
-    const schema = await steamGet("ISteamUserStats", "GetSchemaForGame", 2, {
-      key: keyed.key,
-      appid: asNum(args.appid),
-    });
-    if (isForbidden(schema)) return forbiddenResult("Game schema forbidden or unavailable");
-    if (schema.fail) return httpFail(schema);
-    version = asNum(schema.body?.game?.gameVersion);
-    if (version == null) {
-      return invalid("version is required (GetSchemaForGame has no numeric gameVersion)");
-    }
+    return invalid("version is required (the installed depot version)");
   }
   const r = await steamGet("ISteamApps", "UpToDateCheck", 1, { appid: asNum(args.appid), version });
   if (isForbidden(r)) return forbiddenResult("Up-to-date check forbidden or unavailable");
@@ -1711,6 +1709,7 @@ export {
   SERVER_INFO,
   parseVanityInput,
   eresultName,
+  decodeEResult,
   applyEresult,
   slimPublishedFile,
   slimCollection,
