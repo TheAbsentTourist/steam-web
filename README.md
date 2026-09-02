@@ -19,9 +19,7 @@ Get a key at [https://steamcommunity.com/dev/apikey](https://steamcommunity.com/
 2. In **cmd.exe**, run `where node`. You should see `C:\Program Files\nodejs\node.exe`.
 3. **Fully quit Cursor** (not Reload Window), then reopen so it inherits the new PATH.
 
-**Grok Bot.** Unchanged. It already runs `node …/server.mjs` and does not use plugin `mcp.json` spawn.
-
-Linux Cursor AppImage / Flatpak stdio MCP is **not supported**.
+**Linux Cursor AppImage / Flatpak.** stdio MCP is **not supported**. Cursor spawn returns ENOENT even for an existing host binary (`node`, `/usr/bin/node`, `/bin/sh`). A bundled linux executable does not fix spawn and cannot run on Windows. This is an issue on Cursor's side and not ours.
 
 ## Credentials
 
