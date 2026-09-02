@@ -1,169 +1,133 @@
 # steam-web
 
-Unofficial reader of the official Steam Web API (`https://api.steampowered.com`). Not affiliated with Valve. Steam® is a trademark of Valve Corporation.
+Ask Cursor or Grok Bot about Steam libraries, playtime, achievements, friends, profiles, Workshop items, trades, and more — live data from the official Steam Web API (`https://api.steampowered.com`).
 
-See [PRIVACY.md](PRIVACY.md) and [TERMS.md](TERMS.md).
+Not affiliated with Valve. Steam® is a trademark of Valve Corporation.
 
-MIT. Author [TheAbsentTourist](https://github.com/TheAbsentTourist), chucktastictime@gmail.com.
+MIT · [TheAbsentTourist](https://github.com/TheAbsentTourist) · chucktastictime@gmail.com
 
-## Requirements
+[Privacy](PRIVACY.md) · [Terms](TERMS.md) · [Security](SECURITY.md)
 
-- Node.js 18+ on the machine that launches the MCP
-- A **user** Steam Web API key for keyed tools
+## What you need
 
-Get a key at [https://steamcommunity.com/dev/apikey](https://steamcommunity.com/dev/apikey) (sign in with Steam). Valve caps usage at 100,000 calls per day.
+1. **Node.js 18+** — [nodejs.org](https://nodejs.org) (Windows installer is fine)
+2. **A Steam Web API key** (for most player/library tools) — free at [steamcommunity.com/dev/apikey](https://steamcommunity.com/dev/apikey)
 
-**Windows Cursor plugin MCP spawn is currently broken** for portable configs. Cursor's Windows plugin MCP host does not match the Agent Plugins spec. The MCP server code is fine.
+Valve allows up to 100,000 API calls per day per key.
 
-Public `mcp.json` keeps a portable, spec-shaped spawn (the same idea Grok Bot already uses). No `cwd`. No `cmd.exe`. No `./scripts/run-mcp.cmd` as `command`. No `${PLUGIN_ROOT}` in `command` or args. No machine-absolute paths:
+Some tools work **without** a key: news, current player counts, global achievement percentages, server info, up-to-date checks, and published-file / collection details (when you already have an id).
 
-```json
-"command": "node",
-"args": ["./server.mjs"]
+Optional: set a default **SteamID64** so you don’t have to pass your id on every call.
+
+## Install in Cursor (local plugin)
+
+Copy or clone this repo into Cursor’s local plugins folder as a **real directory** (not a symlink from somewhere else):
+
+```text
+Windows:  %USERPROFILE%\.cursor\plugins\local\steam-web
+macOS/Linux:  ~/.cursor/plugins/local/steam-web
 ```
 
-That portable config does **not** start MCP in today's Windows Cursor plugin host. Proven on a maintainer machine:
+```bash
+git clone https://github.com/TheAbsentTourist/steam-web.git ~/.cursor/plugins/local/steam-web
+```
 
-1. `${PLUGIN_ROOT}\scripts\run-mcp.cmd` unexpanded → `The system cannot find the path specified.`
-2. Relative `scripts\run-mcp.cmd` with Cursor's actual cwd → same error (cwd is **not** the plugin root; it matches Cursor app-dir behavior).
-3. Absolute `C:\Program Files\nodejs\node.exe` + absolute `…\steam-web\server.mjs` works even with `cwd=C:\`.
-4. Bare `node` → `spawn node ENOENT` (plugin spawn PATH has no `node`).
-5. `./scripts/run-mcp.cmd` as `command` → wrong resolution / `cmd` `./` parsing issues (resolved against the Cursor install dir, e.g. `%LOCALAPPDATA%\Programs\cursor\scripts\run-mcp.cmd`).
+Then reload Cursor (**Developer: Reload Window**). You should see **Steam Web** under Customize / Plugins.
 
-**Local workaround (NOT in the public `mcp.json`).** Until Cursor fixes plugin spawn, add a user MCP in `~/.cursor/mcp.json` (Windows: `%USERPROFILE%\.cursor\mcp.json`) with absolute `node.exe` and an absolute path to the installed plugin `server.mjs`:
+**Teams / Enterprise:** your admin may need to allow local plugin imports.
+
+### Windows: make the MCP actually start
+
+Cursor on Windows often can’t start this plugin’s MCP from the portable config alone (it doesn’t find `node`, and plugin path setup is unreliable). The reliable fix is a **user** MCP entry with full paths.
+
+Create or edit `%USERPROFILE%\.cursor\mcp.json`:
 
 ```json
 {
   "mcpServers": {
     "steam-web": {
       "command": "C:\\Program Files\\nodejs\\node.exe",
-      "args": ["C:\\Users\\YOU\\.cursor\\plugins\\local\\steam-web\\server.mjs"]
+      "args": [
+        "C:\\Users\\YOUR_USERNAME\\.cursor\\plugins\\local\\steam-web\\server.mjs"
+      ]
     }
   }
 }
 ```
 
-Replace those paths with your Node install and plugin directory. Typical Node: [official Windows installer](https://nodejs.org) → `%ProgramFiles%\nodejs\node.exe`. After installing Node, **fully quit Cursor** (not Reload Window) and reopen. Do **not** commit machine-absolute paths to this repo. A bundled linux executable is not used.
+Adjust the two paths if your Node or plugin folder lives somewhere else. After installing Node, **fully quit Cursor** and reopen it (Reload Window is not enough for PATH changes).
 
-`scripts/run-mcp.cmd` and `scripts/find-node.cmd` are optional terminal helpers only. They are **not** the Cursor `mcp.json` entry until Cursor is fixed.
+Then set your API key (and optional SteamID) under **Plugins → Configure**, or use the options below.
 
-**Grok Bot** runs `server.mjs` directly and does not use `mcp.json`. Unchanged.
+### API key and default SteamID
 
-**macOS / Linux Cursor (AppImage / Flatpak).** stdio MCP is **not supported**. Prior tests returned `ENOENT` even for existing host binaries (`node`, `/usr/bin/node`, `/bin/sh`).
+Pick one:
 
-## Credentials
-
-The MCP server reads, in order:
-
-1. Host environment: `STEAM_WEB_API_KEY` (needed for keyed tools) and optional `STEAM_ID` (default 64-bit SteamID)
-2. If a value is still missing: `$PLUGIN_DATA/config.json`
-
-On a Marketplace install, set the same fields under **Plugins → Configure**.
-
-Copy `config.example.json` to `$PLUGIN_DATA/config.json` and fill in strings:
+- **Plugins → Configure** — set `STEAM_WEB_API_KEY` and optional `STEAM_ID`
+- **Environment variables** — same names in the environment Cursor inherits
+- **Config file** — copy `config.example.json` to the plugin data directory as `config.json` and fill in:
 
 ```json
 {
-  "STEAM_WEB_API_KEY": "",
-  "STEAM_ID": ""
+  "STEAM_WEB_API_KEY": "your_key_here",
+  "STEAM_ID": "7656119xxxxxxxxxxxxx"
 }
 ```
 
-These work without a key: news, current players, global achievement %, servers (when `addr` is provided), up-to-date check, server info, and published-file/collection details.
+Don’t commit keys or paste them into GitHub issues.
 
-## Install locally in Cursor
+## What you can ask
 
-Put a **real directory** at `~/.cursor/plugins/local/steam-web` (Windows: `%USERPROFILE%\.cursor\plugins\local\steam-web`). Clone into that path:
+- **Profiles & social** — vanity URLs → SteamID, persona/avatar/status, friends, VAC/community/economy bans
+- **Library & playtime** — owned games, recently played (times exposed as minutes)
+- **Level & badges** — Steam level, badges, community badge quest progress
+- **Achievements & stats** — unlocks with names/descriptions, raw stats, schema, global unlock %
+- **Live players & news** — who is in-game right now; official app news
+- **Catalog** — official appids and names (not store prices or wishlists)
+- **Servers** — dedicated servers at an IP; or omit the IP when that player is in a multiplayer session and Steam reports a server address
+- **Version check** — whether an installed depot `version` is current (you must supply the real version)
+- **Trades** — history and offers for the **API key owner**
+- **Workshop** — item details, collections, UGC files, search
 
-```bash
-git clone https://github.com/TheAbsentTourist/steam-web.git ~/.cursor/plugins/local/steam-web
-```
-
-Copy or move this folder there works too.
-
-Do **not** symlink a checkout that lives outside `~/.cursor/plugins/local`. Cursor rejects those with:
-
-```
-loadUserLocalPlugin steam-web rejected: symlink target ... is outside ~/.cursor/plugins/local
-```
-
-That is a Cursor local-plugin limitation, not a steam-web defect. If you already symlinked, remove the symlink and clone or copy into the folder instead.
-
-Then **Developer: Reload Window**. **Customize** should show Steam Web (plugin) and steam-web (MCP/skill). Set `STEAM_WEB_API_KEY` and optional `STEAM_ID` under **Plugins → Configure** (or the host environment / `$PLUGIN_DATA/config.json`).
-
-Public plugin spawn (`mcp.json`) is spec-shaped `node` + `./server.mjs` (no `cwd`). Windows Cursor's plugin MCP host currently cannot run that portable config — see Requirements for evidence and the user-MCP absolute-path workaround. Grok Bot already runs the same `server.mjs` without `mcp.json`.
-
-On Teams/Enterprise, local plugin imports may be disabled by admin policy.
-
-## What it can do
-
-**Profiles, friends, bans, vanity.** Resolve a custom `/id/` or group URL to a SteamID. Fetch persona, avatar, visibility, and current game. Read friend lists and VAC / community / economy bans.
-
-**Owned games and playtime.** Return a library and recently played games. Playtime is mapped to minutes: `playtime_forever` → `playtime_forever_min`, `playtime_2weeks` → `playtime_2weeks_min`.
-
-**Level and badges.** Steam XP level, badge inventory, and quest progress for one community badge.
-
-**Achievements, stats, schema, global %.** Per-user unlocks (with schema names and descriptions), raw stats, the achievement/stat schema for an app, and global unlock percentages. Current in-app player counts are included here too.
-
-**News.** Official app news posts.
-
-**Catalog.** Official catalog appids and names. Not store prices or wishlists.
-
-**Game servers and version check.** Dedicated servers at an IP. Omit `addr` on `steam_get_servers_at_address` to use the profile `gameserverip` when that SteamID is in a multiplayer session; otherwise `invalid_arguments`. Do not invent an IP. `steam_up_to_date_check` needs the installed depot `version` (do not invent one from GetSchemaForGame).
-
-**Web API util.** Steam Web API server time, and the official supported-method list (an optional key reveals more).
-
-**Trades.** History, sent/received offers, a single offer, and pending-offer counts — typically for the Web API **key owner** only.
-
-**Workshop.** Published-file details, collection children, one UGC file, and Workshop search.
-
-Private or hidden profiles, including a private friend list (HTTP 401/403), return `{ "error": "private_or_unavailable", "message" }` — not a raw `http_error` with an empty body.
+Private profiles (and private friend lists) come back as `private_or_unavailable` instead of an empty HTTP error.
 
 ## Tools
 
 | Tool | Returns |
 | --- | --- |
 | `steam_resolve_vanity` | SteamID for a vanity `/id/` or group URL |
-| `steam_get_profile` | Persona, avatar, visibility, current game (up to 100 SteamIDs) |
-| `steam_get_player_bans` | VAC, community, and economy ban status |
-| `steam_get_friends` | Friend list (`private_or_unavailable` on 401/403) |
-| `steam_get_owned_games` | Owned games and lifetime playtime |
-| `steam_get_recently_played` | Recently played games and two-week playtime |
+| `steam_get_profile` | Persona, avatar, visibility, current game (up to 100 ids) |
+| `steam_get_player_bans` | VAC, community, and economy bans |
+| `steam_get_friends` | Friend list |
+| `steam_get_owned_games` | Library and lifetime playtime |
+| `steam_get_recently_played` | Recent games and two-week playtime |
 | `steam_get_steam_level` | Steam XP level |
-| `steam_get_badges` | Badge inventory and XP |
-| `steam_get_community_badge_progress` | Quest progress for one community badge |
-| `steam_get_achievements` | Unlock state with schema names and descriptions |
-| `steam_get_user_stats` | Per-user stat values for one app |
-| `steam_get_schema_for_game` | Achievement and stat schema for an app |
-| `steam_get_global_achievement_percentages` | Global unlock percentages |
-| `steam_get_number_of_current_players` | Players in-app on Steam right now |
-| `steam_get_news` | Official app news posts |
-| `steam_get_app_list` | Catalog appids and names (paged; any key) |
-| `steam_get_servers_at_address` | Game servers at an IP (omit `addr` to use profile `gameserverip` when in a session) |
-| `steam_up_to_date_check` | Whether an installed depot version is current (`version` required) |
-| `steam_get_server_info` | Steam Web API server time |
-| `steam_get_supported_api_list` | Official method catalog |
-| `steam_get_trade_history` | Key owner's trade history |
-| `steam_get_trade_offers` | Key owner's sent and received trade offers |
-| `steam_get_trade_offer` | One trade offer by id |
-| `steam_get_trade_offers_summary` | Counts of pending offers |
+| `steam_get_badges` | Badges and XP |
+| `steam_get_community_badge_progress` | Quests for one community badge |
+| `steam_get_achievements` | Unlocks with schema names/descriptions |
+| `steam_get_user_stats` | Per-user stats for one app |
+| `steam_get_schema_for_game` | Achievement/stat schema |
+| `steam_get_global_achievement_percentages` | Global unlock % |
+| `steam_get_number_of_current_players` | Current in-app players |
+| `steam_get_news` | Official app news |
+| `steam_get_app_list` | Catalog appids and names |
+| `steam_get_servers_at_address` | Servers at an IP (or session server when `addr` omitted) |
+| `steam_up_to_date_check` | Depot up-to-date check (`version` required) |
+| `steam_get_server_info` | Web API server time |
+| `steam_get_supported_api_list` | Official method list |
+| `steam_get_trade_history` | Key owner’s trade history |
+| `steam_get_trade_offers` | Key owner’s trade offers |
+| `steam_get_trade_offer` | One offer by id |
+| `steam_get_trade_offers_summary` | Pending offer counts |
 | `steam_get_published_file_details` | Workshop item details |
-| `steam_get_collection_details` | Workshop collection children |
+| `steam_get_collection_details` | Collection children |
 | `steam_get_ugc_file_details` | One UGC file |
-| `steam_query_files` | Workshop search results |
+| `steam_query_files` | Workshop search |
 
-## Configure (Cursor)
+## Help
 
-On a catalog/Marketplace install, open **Plugins → Configure** and set `STEAM_WEB_API_KEY` (required for keyed tools) and optional `STEAM_ID` (default SteamID64).
-
-## Contact and support
-
-- Author: [TheAbsentTourist](https://github.com/TheAbsentTourist)
-- Email: chucktastictime@gmail.com
 - Issues: https://github.com/TheAbsentTourist/steam-web/issues
+- Email: chucktastictime@gmail.com
 
-This is a community plugin. Best-effort GitHub issues; no SLA.
-
-## Security
-
-See [SECURITY.md](SECURITY.md). Do not paste a Steam Web API key or SteamID into a GitHub issue.
+Community project — best-effort support, no SLA.
+]()
