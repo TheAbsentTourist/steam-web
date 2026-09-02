@@ -1,6 +1,6 @@
 # VERIFY
 
-Proven in this VM on 2026-09-01. Commands run from the plugin root (`/workspace` here; locally, the copied `~/.cursor/plugins/local/steam-web` directory).
+Proven in this VM on 2026-09-01. Commands run from the plugin root (`/workspace` here; locally, the real directory `~/.cursor/plugins/local/steam-web`, not a symlink).
 
 ## Environment
 
@@ -54,7 +54,7 @@ The script:
 
 ## Cannot prove here
 
-- Cursor **Customize** UI / local plugin loader on a user machine (`~/.cursor/plugins/local/steam-web` as a real directory)
+- Cursor **Customize** UI / local plugin loader on a user machine (`~/.cursor/plugins/local/steam-web` as a real directory, not a symlink)
 - Host injection of `PLUGIN_ROOT` / `PLUGIN_DATA`
 - Keyed tools (`STEAM_WEB_API_KEY` absent): library, friends, achievements, trades, Workshop search, `IStoreService/GetAppList`
 - Private-profile `401`/`403` → `private_or_unavailable` against a real hidden profile

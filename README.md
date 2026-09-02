@@ -35,7 +35,23 @@ These work without a key: news, current players, global achievement %, servers (
 
 ## Install locally in Cursor
 
-Copy this directory to `~/.cursor/plugins/local/steam-web`. Restart Cursor or run **Developer: Reload Window**, then open **Customize** and confirm the `steam-web` skill and MCP server. Set `STEAM_WEB_API_KEY` (and optional `STEAM_ID`) in the host environment, in `config.json` under the client-managed `PLUGIN_DATA` directory, or via Configure.
+Put a **real directory** at `~/.cursor/plugins/local/steam-web` (Windows: `%USERPROFILE%\.cursor\plugins\local\steam-web`). Clone into that path:
+
+```bash
+git clone https://github.com/TheAbsentTourist/steam-web.git ~/.cursor/plugins/local/steam-web
+```
+
+Copy or move this folder there works too.
+
+Do **not** symlink a checkout that lives outside `~/.cursor/plugins/local`. Cursor rejects those with:
+
+```
+loadUserLocalPlugin steam-web rejected: symlink target ... is outside ~/.cursor/plugins/local
+```
+
+That is a Cursor local-plugin limitation, not a steam-web defect. If you already symlinked, remove the symlink and clone or copy into the folder instead.
+
+Then **Developer: Reload Window**. **Customize** should show Steam Web (plugin) and steam-web (MCP/skill). Set `STEAM_WEB_API_KEY` and optional `STEAM_ID` under **Plugins → Configure** (or the host environment / `$PLUGIN_DATA/config.json`).
 
 On Teams/Enterprise, local plugin imports may be disabled by admin policy.
 
