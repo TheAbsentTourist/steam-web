@@ -1236,7 +1236,7 @@ function stripAddrBrackets(raw) {
 function isUnusableGameserverIp(addr) {
   if (!present(addr)) return true;
   const s = String(addr).trim().toLowerCase();
-  if (!s) return true;
+  if (!s || s === "0" || s === "0:0") return true;
   if (s === "0.0.0.0" || s.startsWith("0.0.0.0:")) return true;
   return false;
 }
