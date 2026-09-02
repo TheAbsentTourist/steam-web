@@ -1736,6 +1736,9 @@ function pump() {
 
 function startedAsMain() {
   try {
+    // bun build --compile embeds the entry under $bunfs; argv[1] is the executable.
+    if (typeof Bun !== "undefined" && Bun.isStandaloneExecutable) return true;
+    if (import.meta.main === true) return true;
     return Boolean(process.argv[1]) && import.meta.url === pathToFileURL(process.argv[1]).href;
   } catch {
     return true;

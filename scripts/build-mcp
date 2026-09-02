@@ -1,0 +1,45 @@
+#!/bin/sh
+# Rebuild steam-web-mcp standalone binaries from server.mjs (source of truth).
+# Requires bun (https://bun.sh). Linux x64 output is bin/steam-web-mcp — the
+# name Cursor AppImage spawn uses via ${PLUGIN_ROOT}/bin/steam-web-mcp.
+# Do not UPX: packing breaks bun's appended overlay (initialize then fails).
+set -eu
+
+root=$(CDPATH= cd -- "$(dirname "$0")/.." && pwd) || exit 1
+cd "$root"
+
+if ! command -v bun >/dev/null 2>&1; then
+  printf '%s\n' "steam-web: bun not found. Install from https://bun.sh then re-run scripts/build-mcp." >&2
+  exit 1
+fi
+
+mkdir -p bin
+
+# Smallest flags that still run initialize + steam_get_news: minify, no sourcemap,
+# no dotenv/bunfig autoload. Do not use --bytecode (it inflates the binary).
+compile() {
+  _target=$1
+  _out=$2
+  printf '%s\n' "building $_out ($_target)"
+  bun build --compile --minify \
+    --no-compile-autoload-dotenv \
+    --no-compile-autoload-bunfig \
+    --target="$_target" \
+    --outfile="$_out" \
+    ./server.mjs
+}
+
+compile bun-linux-x64 bin/steam-web-mcp
+chmod +x bin/steam-web-mcp
+
+if [ "${STEAM_WEB_MCP_CROSS:-}" = "1" ]; then
+  compile bun-linux-arm64 bin/steam-web-mcp-linux-arm64
+  chmod +x bin/steam-web-mcp-linux-arm64
+  compile bun-darwin-arm64 bin/steam-web-mcp-darwin-arm64
+  chmod +x bin/steam-web-mcp-darwin-arm64
+  compile bun-darwin-x64 bin/steam-web-mcp-darwin-x64
+  chmod +x bin/steam-web-mcp-darwin-x64
+  compile bun-windows-x64 bin/steam-web-mcp.exe
+fi
+
+ls -lh bin/steam-web-mcp* 2>/dev/null || true
