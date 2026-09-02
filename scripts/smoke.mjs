@@ -1,7 +1,7 @@
 #!/usr/bin/env node
 /**
  * Live MCP smoke: initialize, tools/list, steam_get_news appid 440.
- * Spawns node ./server.mjs (Windows Cursor / Grok Bot spawn path).
+ * Spawns node ./server.mjs (Grok Bot / direct-run path).
  * Asserts a title that also appears on api.steampowered.com. Does not fake data.
  */
 import { spawn } from "node:child_process";

@@ -13,13 +13,11 @@ MIT. Author [TheAbsentTourist](https://github.com/TheAbsentTourist), chucktastic
 
 Get a key at [https://steamcommunity.com/dev/apikey](https://steamcommunity.com/dev/apikey) (sign in with Steam). Valve caps usage at 100,000 calls per day.
 
-**Windows Cursor.** Success is `mcp.json` spawning bare `node` plus `./server.mjs` with `cwd` `${PLUGIN_ROOT}`. A default Node.js install at `C:\Program Files\nodejs` works because `command` is `node` (the PATH Cursor inherits), not a linux binary.
+**Windows Cursor.** `mcp.json` uses the plugin-relative command `./scripts/run-mcp.cmd` (Agent Plugins spec). That launcher finds `node.exe` when Cursor's spawn PATH does not include Node — bare `"command": "node"` fails with `spawn node ENOENT` even if Node is installed. Typical install: [official Windows installer](https://nodejs.org) → `%ProgramFiles%\nodejs\node.exe`. You can also set `STEAM_WEB_NODE` to the full path of `node.exe`. After installing Node, **fully quit Cursor** (not Reload Window) and reopen.
 
-1. Install Node 18+ from the [official Windows installer](https://nodejs.org) (adds `C:\Program Files\nodejs` to PATH).
-2. In **cmd.exe**, run `where node`. You should see `C:\Program Files\nodejs\node.exe`.
-3. **Fully quit Cursor** (not Reload Window), then reopen so it inherits the new PATH.
+**macOS / Linux Cursor.** Until clients support platform-specific command maps, a `.cmd` launcher may not run. Temporary local override: `"command": "node"` with `"args": ["./server.mjs"]` and `"cwd": "${PLUGIN_ROOT}"`. A bundled linux executable is not used.
 
-**Linux Cursor AppImage / Flatpak.** stdio MCP is **not supported**. Cursor spawn returns ENOENT even for an existing host binary (`node`, `/usr/bin/node`, `/bin/sh`). A bundled linux executable does not fix spawn and cannot run on Windows. This is an issue on Cursor's side and not ours.
+**Grok Bot** runs `server.mjs` directly and does not use `mcp.json`.
 
 ## Credentials
 
@@ -64,12 +62,12 @@ Then **Developer: Reload Window**. **Customize** should show Steam Web (plugin) 
 Windows Cursor local plugin spawn (`mcp.json`):
 
 ```json
-"command": "node",
-"args": ["./server.mjs"],
+"command": "./scripts/run-mcp.cmd",
+"args": [],
 "cwd": "${PLUGIN_ROOT}"
 ```
 
-`server.mjs` is the MCP. Confirm `where node` in cmd.exe, then fully quit Cursor (see Requirements). Grok Bot already runs the same `server.mjs` without `mcp.json`.
+`scripts/run-mcp.cmd` locates `node.exe` (PATH, Program Files, nvm/volta/scoop/fnm, or `STEAM_WEB_NODE`) and runs `server.mjs`. Grok Bot already runs the same `server.mjs` without `mcp.json`.
 
 On Teams/Enterprise, local plugin imports may be disabled by admin policy.
 

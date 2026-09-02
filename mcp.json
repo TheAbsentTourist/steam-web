@@ -3,8 +3,8 @@
   "mcpServers": {
     "steam-web": {
       "type": "stdio",
-      "command": "node",
-      "args": ["./server.mjs"],
+      "command": "./scripts/run-mcp.cmd",
+      "args": [],
       "cwd": "${PLUGIN_ROOT}",
       "env": {
         "STEAM_WEB_API_KEY": "${STEAM_WEB_API_KEY}",

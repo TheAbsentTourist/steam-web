@@ -4,10 +4,11 @@ Proven in this VM on 2026-09-02. Commands run from the plugin root (`/workspace`
 
 ## Environment
 
-- Node.js `v22.14.0` (`node --check` / MCP spawn; 18+ required)
+- Node.js `v22.14.0` (`node --check` / direct MCP spawn; 18+ required)
 - No `STEAM_WEB_API_KEY` in this environment (news smoke does not need one)
 - Live host: `https://api.steampowered.com`
-- No bundled `bin/steam-web-mcp` (linux bun blob removed; AppImage spawn still ENOENT)
+- No bundled `bin/steam-web-mcp` (linux bun blob not reintroduced)
+- This VERIFY host is Linux: `cmd.exe` is absent, so the PATH-stripped `.cmd` spawn is skipped
 
 ## 1. Manifest schemas
 
@@ -23,7 +24,7 @@ Validated with Ajv 2020-12 (`ajv@8` installed only under `/tmp/steam-web-verify`
 | `plugin.json` | **PASS** (`$id` `https://agent-plugins.org/schemas/1.0.0/plugin.schema.json`) |
 | `mcp.json` | **PASS** (`$id` `https://agent-plugins.org/schemas/1.0.0/mcp.schema.json`) |
 
-`plugin.json` uses the closed 1.0.0 field set (`author` is an object). `mcp.json` interpolates `${PLUGIN_ROOT}` (`cwd`), `${STEAM_WEB_API_KEY}`, and `${STEAM_ID}`; those are placeholders, not committed secrets. `command` is bare `node` with `args` `["./server.mjs"]` and `cwd` `${PLUGIN_ROOT}`. Not used: `/bin/sh`, `${NODE}`, `${PLUGIN_ROOT}/bin/steam-web-mcp`, or a linuxbrew PATH hack.
+`plugin.json` uses the closed 1.0.0 field set (`author` is an object). `mcp.json` interpolates `${PLUGIN_ROOT}` (`cwd`), `${STEAM_WEB_API_KEY}`, and `${STEAM_ID}`; those are placeholders, not committed secrets. `command` is plugin-relative `./scripts/run-mcp.cmd` with `args` `[]` and `cwd` `${PLUGIN_ROOT}` so Windows Cursor can launch the `.cmd` even when PATH has no `node`. Not used: bare `node`, `"command": "cmd"` `/c`, `${NODE}`, `${PLUGIN_ROOT}` in `command`, a hardcoded `C:\Program Files\nodejs\node.exe`, `env.PATH`, or a bundled linux binary.
 
 ## 2. Syntax
 
@@ -59,15 +60,16 @@ The script:
 node scripts/mcp-path-test.mjs
 ```
 
-Asserts `command` is `node` with `args` `["./server.mjs"]` (not `/bin/sh` / `${NODE}` / `${PLUGIN_ROOT}/bin/steam-web-mcp` / a linuxbrew PATH), `.cursor-plugin/plugin.json` does not require `NODE`, `bin/steam-web-mcp` and `scripts/build-mcp` are absent, initialize works via `node ./server.mjs`, and `scripts/run-mcp` is an optional terminal helper that `exec node`s `server.mjs`.
+Asserts `command` is `./scripts/run-mcp.cmd` with `args` `[]` (cwd/env placeholders unchanged), `scripts/find-node.cmd` searches well-known `node.exe` locations, `.cursor-plugin/plugin.json` does not require `NODE`, `bin/steam-web-mcp` is absent, initialize works via `node ./server.mjs` (Grok Bot / direct-run), and the POSIX `scripts/run-mcp` helper still finds Node when PATH has none. PATH-stripped `./scripts/run-mcp.cmd` is skipped here (no `cmd.exe`); on Windows it must still initialize when `node.exe` exists under Program Files.
 
 **PASS**
 
 ## Cannot prove here
 
 - Cursor **Customize** UI / local plugin loader on a user machine (`~/.cursor/plugins/local/steam-web` as a real directory, not a symlink)
-- Windows Cursor inheriting `node` on PATH after the official installer (`where node` in cmd.exe shows `C:\Program Files\nodejs\node.exe`; fully quit Cursor after install)
-- Linux Cursor AppImage / Flatpak stdio MCP (not supported)
+- Windows Cursor launching `./scripts/run-mcp.cmd` via cmd.exe when spawn PATH lacks `node` (Program Files / `STEAM_WEB_NODE`)
+- macOS/Linux Cursor running the `.cmd` command (may need a local override to `"command": "node"`, `"args": ["./server.mjs"]` until platform-specific command maps exist)
+- Linux Cursor AppImage / Flatpak stdio MCP spawn
 - Host injection of `PLUGIN_ROOT` / `PLUGIN_DATA`
 - Keyed tools (`STEAM_WEB_API_KEY` absent): library, friends, achievements, trades, Workshop search, `IStoreService/GetAppList`
 - Private-profile `401`/`403` → `private_or_unavailable` against a real hidden profile
