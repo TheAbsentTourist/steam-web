@@ -22,7 +22,7 @@ Validated with Ajv 2020-12 (`ajv@8` installed only under `/tmp/steam-web-verify`
 | `plugin.json` | **PASS** (`$id` `https://agent-plugins.org/schemas/1.0.0/plugin.schema.json`) |
 | `mcp.json` | **PASS** (`$id` `https://agent-plugins.org/schemas/1.0.0/mcp.schema.json`) |
 
-`plugin.json` uses the closed 1.0.0 field set (`author` is an object). `mcp.json` interpolates `${STEAM_WEB_API_KEY}` and `${STEAM_ID}` from the host environment; those are placeholders, not committed secrets.
+`plugin.json` uses the closed 1.0.0 field set (`author` is an object). `mcp.json` interpolates `${STEAM_WEB_API_KEY}` and `${STEAM_ID}` from the host environment; those are placeholders, not committed secrets. `env.PATH` prepends well-known Node dirs and appends `${PATH}` so a GUI spawn can find `node` without replacing the rest of PATH.
 
 ## 2. Syntax
 
@@ -51,6 +51,16 @@ The script:
 | `protocolVersion` | `2024-11-05` |
 | `tools/list` includes `steam_get_news` (28 tools) | **PASS** |
 | MCP title also on `api.steampowered.com` | **PASS** — `Australian Hightower Highjinx 2026` |
+
+## 4. MCP spawn PATH (offline)
+
+```bash
+node scripts/mcp-path-test.mjs
+```
+
+Asserts `command` stays `node` (not `cmd.exe` / `node.exe`), `env.PATH` prepends official Node dirs and appends `${PATH}`, Unix `:`-split still has `/usr/bin` as its own entry, and `node --check server.mjs` still runs when that PATH is applied.
+
+**PASS**
 
 ## Cannot prove here
 

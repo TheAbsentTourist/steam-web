@@ -8,7 +8,7 @@ MIT. Author [TheAbsentTourist](https://github.com/TheAbsentTourist), chucktastic
 
 ## Requirements
 
-- Node.js 18+
+- Node.js 18+ on the PATH Cursor inherits at launch (not only in a terminal)
 - A **user** Steam Web API key for keyed tools
 
 Get a key at [https://steamcommunity.com/dev/apikey](https://steamcommunity.com/dev/apikey) (sign in with Steam). Valve caps usage at 100,000 calls per day.
@@ -52,6 +52,8 @@ loadUserLocalPlugin steam-web rejected: symlink target ... is outside ~/.cursor/
 That is a Cursor local-plugin limitation, not a steam-web defect. If you already symlinked, remove the symlink and clone or copy into the folder instead.
 
 Then **Developer: Reload Window**. **Customize** should show Steam Web (plugin) and steam-web (MCP/skill). Set `STEAM_WEB_API_KEY` and optional `STEAM_ID` under **Plugins → Configure** (or the host environment / `$PLUGIN_DATA/config.json`).
+
+If logs show `spawn node ENOENT`, Node 18+ is not on the PATH Cursor inherits at launch (a terminal `node` is not enough). Use the official installer, then fully quit and reopen Cursor. On Windows, `where node` in cmd.exe must print a path. nvm/fnm/volta/scoop often fail for GUI apps.
 
 On Teams/Enterprise, local plugin imports may be disabled by admin policy.
 
