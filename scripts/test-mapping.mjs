@@ -95,6 +95,20 @@ const pub = await run("steam_get_published_file_details", { publishedfileids: "9
 eq(pub.payload.files?.[0]?.result, "file_not_found", "published file eresult 9");
 eq(pub.payload.error, undefined, "item 9 is not whole-payload private");
 
+scripted.push({ status: 200, body: { response: { total: 0, publishedfiledetails: [] } } });
+const emptyWs = await run("steam_get_published_file_details", { appid: 70 });
+eq(emptyWs.payload.files, [], "no workshop items is empty files");
+eq(emptyWs.payload.error, undefined, "empty workshop is not an error");
+if (calls.some((c) => /publishedfileids/.test(c.href) && /[=[]1\b/.test(c.href))) {
+  console.error("FAIL must not invent publishedfileid 1");
+  process.exit(1);
+}
+
+scripted.push({ status: 200, body: { response: { badges: [{ badgeid: 2 }] } } });
+scripted.push({ status: 200, body: { response: {} } });
+const badgeOmit = await run("steam_get_community_badge_progress", { steamid: "2" });
+eq(badgeOmit.payload.badges, [{ badgeid: 2, quests: [] }], "omit badgeid uses community badge 2");
+
 scripted.push({ status: 404, body: { status: { code: 9 } } });
 const ugc404 = await run("steam_get_ugc_file_details", { ugcid: "abc", appid: 440 });
 eq(ugc404.payload.error, "file_not_found", "UGC status 9 is file_not_found");
