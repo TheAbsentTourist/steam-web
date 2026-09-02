@@ -8,7 +8,7 @@ MIT. Author [TheAbsentTourist](https://github.com/TheAbsentTourist), chucktastic
 
 ## Requirements
 
-- Node.js 18+ on the PATH Cursor inherits at launch (not only in a terminal)
+- Node.js 18+ installed on the machine (brew / rpm-ostree / official installer — not only inside a toolbox)
 - A **user** Steam Web API key for keyed tools
 
 Get a key at [https://steamcommunity.com/dev/apikey](https://steamcommunity.com/dev/apikey) (sign in with Steam). Valve caps usage at 100,000 calls per day.
@@ -53,7 +53,7 @@ That is a Cursor local-plugin limitation, not a steam-web defect. If you already
 
 Then **Developer: Reload Window**. **Customize** should show Steam Web (plugin) and steam-web (MCP/skill). Set `STEAM_WEB_API_KEY` and optional `STEAM_ID` under **Plugins → Configure** (or the host environment / `$PLUGIN_DATA/config.json`).
 
-If logs show `spawn node ENOENT`, Node 18+ is not on the PATH Cursor inherits at launch (a terminal `node` is not enough). Use the official installer, then fully quit and reopen Cursor. On Windows, `where node` in cmd.exe must print a path. nvm/fnm/volta/scoop often fail for GUI apps.
+Cursor spawn does not use your terminal PATH (Flatpak/Bazzite especially). The plugin launcher searches well-known Node installs. You still need Node 18+ actually installed on the machine (brew / rpm-ostree / official installer), not only inside a toolbox.
 
 On Teams/Enterprise, local plugin imports may be disabled by admin policy.
 
