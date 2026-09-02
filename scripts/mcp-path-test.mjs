@@ -3,10 +3,14 @@
  * Offline mcp.json launcher checks. No Steam, no secrets.
  * Windows-first: Cursor spawn is plugin-relative ./scripts/run-mcp.cmd
  * (finds node.exe when PATH is broken). Grok Bot still runs node ./server.mjs.
+ *
+ * cwd is omitted (spec default = plugin root) or "./" — never ${PLUGIN_ROOT}.
+ * Cursor expanding ${PLUGIN_ROOT} to an unusable cwd makes spawn() report
+ * ENOENT for C:\WINDOWS\system32\cmd.exe even when that file exists.
  */
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
-import { accessSync, constants, existsSync, readFileSync, statSync } from "node:fs";
+import { accessSync, constants, existsSync, mkdirSync, readFileSync, statSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
@@ -27,9 +31,15 @@ assert.notEqual(server.command, "${PLUGIN_ROOT}/bin/steam-web-mcp");
 assert.doesNotMatch(server.command, /\$\{NODE\}|\$\{PLUGIN_ROOT\}/);
 assert.doesNotMatch(server.command, /Program Files/i);
 assert.doesNotMatch(JSON.stringify(mcp), /C:\\\\Program Files|C:\\Program Files/i);
+assert.doesNotMatch(JSON.stringify(mcp), /PLUGIN_ROOT/);
 assert.deepEqual(server.args, []);
 assert.ok(!server.args?.some((a) => String(a).includes("steam-web-mcp")));
-assert.equal(server.cwd, "${PLUGIN_ROOT}");
+assert.ok(!server.args?.some((a) => String(a) === "/c" || String(a).startsWith("/c ")));
+assert.ok(
+  !Object.hasOwn(server, "cwd") || server.cwd === "./",
+  'cwd must be omitted or "./" — not ${PLUGIN_ROOT}',
+);
+assert.notEqual(server.cwd, "${PLUGIN_ROOT}");
 assert.equal(server.env?.STEAM_WEB_API_KEY, "${STEAM_WEB_API_KEY}");
 assert.equal(server.env?.STEAM_ID, "${STEAM_ID}");
 assert.equal(server.env?.PATH, undefined);
@@ -64,9 +74,19 @@ const cmdText = readFileSync(win, "utf8");
 assert.match(cmdText, /find-node\.cmd/);
 assert.match(cmdText, /"%NODE%" "%~dp0\.\.\\server\.mjs" %\*/);
 assert.match(cmdText, /spawn node ENOENT/);
+assert.match(cmdText, /This is not a Steam API failure/);
+assert.match(cmdText, /if defined NODE goto :run/);
+assert.doesNotMatch(cmdText, /if not defined NODE\s*\(/i);
 assert.doesNotMatch(cmdText, /steam-web-mcp|windowsworst|dummy/i);
 
 const findText = readFileSync(findNode, "utf8");
+const findCode = findText
+  .split(/\r?\n/)
+  .filter((line) => !/^\s*(?:@?REM\b|::)/i.test(line))
+  .join("\n");
+assert.doesNotMatch(findCode, /\bsetlocal\b/i, "setlocal in find-node.cmd hides NODE from `call`");
+assert.doesNotMatch(findCode, /\bendlocal\b/i, "endlocal & set NODE= does not persist across `call find-node.cmd`");
+assert.match(findText, /set "NODE=/);
 assert.match(findText, /STEAM_WEB_NODE/);
 assert.match(findText, /where\.exe|where node/i);
 assert.match(findText, /%ProgramFiles%\\nodejs\\node\.exe/);
@@ -77,9 +97,15 @@ assert.match(findText, /\\.volta\\bin\\node\.exe/);
 assert.match(findText, /scoop\\apps\\nodejs\\current\\node\.exe/);
 assert.match(findText, /fnm_multishells/);
 assert.match(findText, /https:\/\/nodejs\.org/);
-assert.match(findText, /STEAM_WEB_NODE/);
 assert.match(findText, /fully quit/);
+assert.match(findText, /This is not a Steam API failure/);
 assert.doesNotMatch(findText, /windowsworst|dummy/i);
+
+function echoLinesWithParens(text) {
+  return text.split(/\r?\n/).filter((line) => /^\s*echo\b/i.test(line.replace(/^\s*@/, "")) && /[()]/.test(line));
+}
+assert.deepEqual(echoLinesWithParens(cmdText), [], "run-mcp.cmd echo must not contain parentheses (cmd IF parse)");
+assert.deepEqual(echoLinesWithParens(findText), [], "find-node.cmd echo must not contain parentheses (cmd IF parse)");
 
 function frame(obj) {
   const json = JSON.stringify(obj);
@@ -175,6 +201,30 @@ function envWithoutNodeOnPath(base) {
   return env;
 }
 
+function envMissingNode(base) {
+  const env = envWithoutNodeOnPath(base);
+  const empty = join(tmpdir(), "steam-web-no-node-dirs");
+  mkdirSync(empty, { recursive: true });
+  env.ProgramFiles = empty;
+  env["ProgramFiles(x86)"] = empty;
+  env.LOCALAPPDATA = empty;
+  env.USERPROFILE = empty;
+  delete env.STEAM_WEB_NODE;
+  delete env.NVM_SYMLINK;
+  delete env.NODE;
+  return env;
+}
+
+function runCmdC(commandLine, env = process.env) {
+  return spawnSync("cmd.exe", ["/d", "/c", commandLine], {
+    cwd: root,
+    env,
+    encoding: "utf8",
+    timeout: 15000,
+    windowsHide: true,
+  });
+}
+
 const prevCwd = process.cwd();
 process.chdir(tmpdir());
 try {
@@ -187,8 +237,35 @@ try {
 }
 
 if (!cmdExeAvailable()) {
+  console.log("mcp-path-test: skip .cmd spawn (cmd.exe not available on this host)");
+  console.log(
+    'mcp-path-test: skip NODE persist proof. On Windows: cmd /c "call scripts\\find-node.cmd & if defined NODE (echo OK %NODE%) else (echo FAIL)"',
+  );
+  console.log("mcp-path-test: skip missing-node .cmd stderr check (no cmd.exe)");
   console.log("mcp-path-test: skip PATH-stripped ./scripts/run-mcp.cmd (cmd.exe not available on this host)");
 } else {
+  const persist = runCmdC("call scripts\\find-node.cmd & if defined NODE (echo OK %NODE%) else (echo FAIL)");
+  assert.equal(persist.status, 0, persist.stderr || "find-node.cmd exit");
+  assert.match(persist.stdout || "", /\bOK\b/, "NODE must be defined after call find-node.cmd");
+  assert.doesNotMatch(persist.stdout || "", /\bFAIL\b/);
+
+  const persistPath = runCmdC("call scripts\\find-node.cmd & if defined NODE (call echo OK %NODE%) else (echo FAIL)");
+  assert.match(persistPath.stdout || "", /OK /);
+  assert.match(persistPath.stdout || "", /node(\.exe)?/i);
+
+  const missing = spawnSync("cmd.exe", ["/d", "/c", win], {
+    cwd: root,
+    env: envMissingNode(process.env),
+    encoding: "utf8",
+    timeout: 15000,
+    windowsHide: true,
+  });
+  assert.equal(missing.status, 1, missing.stderr || "missing-node should exit 1");
+  assert.match(missing.stderr || "", /spawn node ENOENT/);
+  assert.doesNotMatch(missing.stderr || "", /was unexpected/);
+  assert.doesNotMatch(missing.stdout || "", /was unexpected/);
+  assert.equal((missing.stdout || "").trim(), "", "MCP launcher must stay silent on stdout");
+
   const stripped = envWithoutNodeOnPath(process.env);
   const pfNode = programFilesNode();
   if (pfNode) {
