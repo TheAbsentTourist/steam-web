@@ -7,9 +7,13 @@
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
 import { stdin, stdout } from "node:process";
+import { pathToFileURL } from "node:url";
 
 const PROTOCOL_VERSION = "2024-11-05";
-const SERVER_INFO = { name: "steam-web", version: "0.1.0" };
+const SERVER_INFO = { name: "steam-web", version: "0.2.1" };
+const COMMUNITY_BADGEID = 2;
+const WORKSHOP_LOOKUP_PAGE = 5;
+const NO_WORKSHOP_MESSAGE = "This app has no workshop items";
 const API_HOST = "https://api.steampowered.com";
 const TIMEOUT_MS = 15_000;
 const KEY_HELP =
@@ -68,8 +72,79 @@ function invalid(message) {
   return { isError: true, payload: { error: "invalid_arguments", message } };
 }
 
+function notFound(message) {
+  return { isError: true, payload: { error: "not_found", message } };
+}
+
+function fileNotFound(message) {
+  return { isError: true, payload: { error: "file_not_found", message } };
+}
+
 function httpFail(r) {
   return { isError: true, payload: { error: "http_error", message: r.text || "Steam Web API request failed", status: r.status } };
+}
+
+/** Valve EResult: 1 = OK, 9 = FileNotFound. Other codes stay numeric. */
+function decodeEResult(code) {
+  const n = Number(code);
+  if (n === 1) return "ok";
+  if (n === 9) return "file_not_found";
+  return Number.isFinite(n) ? n : code;
+}
+
+function ugcStatusCode(r) {
+  const s = r?.body?.status;
+  if (s && typeof s === "object" && s.code != null) return Number(s.code);
+  if (typeof s === "number") return Number(s);
+  if (r?.body?.result != null) return Number(r.body.result);
+  if (Number.isFinite(r?.eresult)) return Number(r.eresult);
+  return undefined;
+}
+
+/**
+ * vanityurl may be a bare /id/ slug or a steamcommunity.com URL.
+ * /profiles/STEAMID64 (and numeric /gid/) return that id without ResolveVanityURL.
+ */
+function parseVanityInput(raw) {
+  const original = String(raw ?? "").trim();
+  if (!original) return { vanity: "" };
+
+  let pathname = "";
+  const asUrl = original.includes("://")
+    ? original
+    : /^steamcommunity\.com[:/]/i.test(original)
+      ? `https://${original}`
+      : "";
+  if (asUrl) {
+    try {
+      pathname = new URL(asUrl).pathname || "";
+    } catch {
+      pathname = "";
+    }
+  }
+  if (!pathname && /steamcommunity\.com/i.test(original)) {
+    const m = original.match(/steamcommunity\.com(\/[^?\s#]*)/i);
+    if (m) pathname = m[1];
+  }
+
+  const path = pathname.replace(/\/+$/, "");
+  const profiles = path.match(/\/profiles\/(\d{10,})$/i);
+  if (profiles) return { steamid: profiles[1] };
+
+  const gid = path.match(/\/gid\/([^/]+)$/i);
+  if (gid) {
+    const token = decodeURIComponent(gid[1]);
+    if (/^\d{10,}$/.test(token)) return { steamid: token };
+    return { vanity: token, url_type: 2 };
+  }
+
+  const groups = path.match(/\/groups\/([^/]+)$/i);
+  if (groups) return { vanity: decodeURIComponent(groups[1]), url_type: 2 };
+
+  const id = path.match(/\/id\/([^/]+)$/i);
+  if (id) return { vanity: decodeURIComponent(id[1]), url_type: 1 };
+
+  return { vanity: original.replace(/^\/+|\/+$/g, "") };
 }
 
 function present(v) {
@@ -145,15 +220,22 @@ async function steamRequest({ iface, method, version, params = {}, http = "GET",
       url.search = form.toString();
       res = await fetch(url, { method: "GET", signal: ac.signal });
     }
-    if (res.status === 401 || res.status === 403) return { private: true, status: res.status };
     const text = await res.text();
-    if (!res.ok) return { fail: true, status: res.status, text };
-    if (!text.trim()) return { private: true, status: res.status, empty: true };
-    try {
-      return { body: JSON.parse(text), status: res.status };
-    } catch {
-      return { fail: true, status: res.status, text: "invalid JSON from Steam Web API" };
+    let parsed;
+    if (text.trim()) {
+      try {
+        parsed = JSON.parse(text);
+      } catch {
+        parsed = undefined;
+      }
     }
+    const eresultHeader = Number(res.headers.get("x-eresult"));
+    const eresult = Number.isFinite(eresultHeader) ? eresultHeader : undefined;
+    if (res.status === 401 || res.status === 403) return { private: true, status: res.status, body: parsed, eresult };
+    if (!res.ok) return { fail: true, status: res.status, text, body: parsed, eresult };
+    if (!text.trim()) return { private: true, status: res.status, empty: true, eresult };
+    if (!parsed) return { fail: true, status: res.status, text: "invalid JSON from Steam Web API", eresult };
+    return { body: parsed, status: res.status, eresult };
   } catch (err) {
     if (err?.name === "AbortError") {
       return { fail: true, text: `Steam Web API timed out after ${TIMEOUT_MS}ms` };
@@ -275,9 +357,9 @@ function slimPublishedFile(f) {
     "views",
     "lifetime_subscriptions",
     "lifetime_favorited",
-    "result",
   ]);
   if (f.publishedfileid != null) out.publishedfileid = String(f.publishedfileid);
+  if (f.result != null) out.result = decodeEResult(f.result);
   if (Array.isArray(f.tags)) out.tags = f.tags.map((t) => (typeof t === "string" ? t : t.tag)).filter(Boolean);
   return out;
 }
@@ -289,12 +371,15 @@ const TOOLS = [
   {
     name: "steam_resolve_vanity",
     description:
-      "ISteamUser/ResolveVanityURL/v1. Vanity URL → SteamID. url_type: 1 individual (default), 2 group, 3 official game group. User key.",
+      "ISteamUser/ResolveVanityURL/v1. Vanity /id/ slug or full steamcommunity.com URL → SteamID. Not the persona name. /profiles/STEAMID64 is returned without a lookup. url_type: 1 individual (default), 2 group, 3 official game group. User key.",
     inputSchema: {
       type: "object",
       properties: {
-        vanityurl: { type: "string", description: "Custom URL name (path after /id/ or /groups/)." },
-        url_type: { type: "number", description: "1 individual, 2 group, 3 official game group." },
+        vanityurl: {
+          type: "string",
+          description: "Custom URL slug after /id/ or /groups/, or a full steamcommunity.com /id/, /groups/, /gid/, or /profiles/ URL.",
+        },
+        url_type: { type: "number", description: "1 individual, 2 group, 3 official game group. Inferred from /groups/ or /gid/ URLs when omitted." },
       },
       required: ["vanityurl"],
     },
@@ -367,14 +452,14 @@ const TOOLS = [
   },
   {
     name: "steam_get_community_badge_progress",
-    description: "IPlayerService/GetCommunityBadgeProgress/v1 (input_json). Quests for one badgeid. User key.",
+    description:
+      "IPlayerService/GetCommunityBadgeProgress/v1 (input_json). Quests for one badgeid (Steam Community badge is 2, not games-collector 13). If badgeid is omitted, GetBadges then progress for badge 2. Empty quests are []. User key.",
     inputSchema: {
       type: "object",
       properties: {
         steamid: steamidProp,
-        badgeid: { type: "number", description: "Badge id to inspect." },
+        badgeid: { type: "number", description: "Badge id to inspect. Omit to load the Steam Community badge (2)." },
       },
-      required: ["badgeid"],
     },
   },
   {
@@ -471,12 +556,13 @@ const TOOLS = [
   },
   {
     name: "steam_up_to_date_check",
-    description: "ISteamApps/UpToDateCheck/v1. Whether an installed version is current. No key.",
+    description:
+      "ISteamApps/UpToDateCheck/v1. Whether an installed version is current. No key. version is the caller's installed depot version — not GetSchemaForGame gameVersion. Valve success:false is passed through.",
     inputSchema: {
       type: "object",
       properties: {
         appid: appidProp,
-        version: { type: "number", description: "Installed version to check." },
+        version: { type: "number", description: "Installed depot version to check (caller-supplied)." },
       },
       required: ["appid", "version"],
     },
@@ -534,14 +620,14 @@ const TOOLS = [
   },
   {
     name: "steam_get_trade_offer",
-    description: "IEconService/GetTradeOffer/v1 (input_json). One offer by tradeofferid. Typically key owner. User key.",
+    description:
+      "IEconService/GetTradeOffer/v1 (input_json). One offer by tradeofferid. If omitted, GetTradeOffers (active, sent+received): one offer is returned, several yield need_tradeofferid, none is not_found. Typically key owner. User key.",
     inputSchema: {
       type: "object",
       properties: {
-        tradeofferid: { type: "string" },
+        tradeofferid: { type: "string", description: "Offer id. Omit to pick from active sent+received offers." },
         language: { type: "string" },
       },
-      required: ["tradeofferid"],
     },
   },
   {
@@ -554,43 +640,47 @@ const TOOLS = [
   },
   {
     name: "steam_get_published_file_details",
-    description: "ISteamRemoteStorage/GetPublishedFileDetails/v1 (POST). Workshop item details. No key.",
+    description:
+      "ISteamRemoteStorage/GetPublishedFileDetails/v1 (POST). Workshop item details. No key. If publishedfileids omitted and appid set, QueryFiles then details. Per-item EResult 1=ok, 9=file_not_found.",
     inputSchema: {
       type: "object",
       properties: {
         publishedfileids: { type: "string", description: "Comma-separated published file ids." },
+        appid: { type: "number", description: "If publishedfileids omitted, QueryFiles this app (small page) then fetch those ids." },
       },
-      required: ["publishedfileids"],
     },
   },
   {
     name: "steam_get_collection_details",
-    description: "ISteamRemoteStorage/GetCollectionDetails/v1 (POST). Workshop collection children. No key.",
+    description:
+      "ISteamRemoteStorage/GetCollectionDetails/v1 (POST). Workshop collection children. No key. If publishedfileids omitted and appid set, QueryFiles then details. Per-item EResult 1=ok, 9=file_not_found.",
     inputSchema: {
       type: "object",
       properties: {
         publishedfileids: { type: "string", description: "Comma-separated collection published file ids." },
+        appid: { type: "number", description: "If publishedfileids omitted, QueryFiles this app (small page) then fetch those ids." },
       },
-      required: ["publishedfileids"],
     },
   },
   {
     name: "steam_get_ugc_file_details",
-    description: "ISteamRemoteStorage/GetUGCFileDetails/v1. One UGC file. User key. Optional steamid limits to that owner.",
+    description:
+      "ISteamRemoteStorage/GetUGCFileDetails/v1. One UGC file. User key. Optional publishedfileid: GetPublishedFileDetails then hcontent_file/ugcid. HTTP 404 → not_found; status 9 → file_not_found. Optional steamid limits to that owner.",
     inputSchema: {
       type: "object",
       properties: {
-        ugcid: { type: "string" },
+        ugcid: { type: "string", description: "UGC file id. Omit if publishedfileid is set." },
+        publishedfileid: { type: "string", description: "If ugcid omitted, resolve hcontent_file/ugcid via GetPublishedFileDetails." },
         appid: appidProp,
         steamid: { type: "string", description: "If set, only return details if this SteamID owns the file." },
       },
-      required: ["ugcid", "appid"],
+      required: ["appid"],
     },
   },
   {
     name: "steam_query_files",
     description:
-      "IPublishedFileService/QueryFiles/v1 (input_json). Workshop search. User key. Practical args only — not Delete/ban/tag publisher methods.",
+      "IPublishedFileService/QueryFiles/v1 (input_json). Workshop search. User key. Empty files is success when the app has no workshop items.",
     inputSchema: {
       type: "object",
       properties: {
@@ -619,14 +709,18 @@ async function resolveVanity(args) {
   const keyed = requireKey();
   if (keyed.error) return missingKey();
   if (!present(args?.vanityurl)) return invalid("vanityurl is required");
-  const params = { key: keyed.key, vanityurl: args.vanityurl };
-  if (present(args.url_type)) params.url_type = asNum(args.url_type);
+  const parsed = parseVanityInput(args.vanityurl);
+  if (parsed.steamid) return { payload: { steamid: String(parsed.steamid) } };
+  if (!present(parsed.vanity)) return invalid("vanityurl is required");
+  const params = { key: keyed.key, vanityurl: parsed.vanity };
+  const urlType = present(args.url_type) ? asNum(args.url_type) : parsed.url_type;
+  if (urlType != null) params.url_type = urlType;
   const r = await steamGet("ISteamUser", "ResolveVanityURL", 1, params);
   if (r.private) return { payload: privateResult("Vanity URL resolution forbidden or unavailable") };
   if (r.fail) return httpFail(r);
   const resp = r.body?.response ?? {};
   if (resp.success !== 1 || !resp.steamid) {
-    return { isError: true, payload: { error: "not_found", message: resp.message || "Vanity URL did not resolve" } };
+    return notFound(resp.message || "Vanity URL did not resolve");
   }
   return { payload: { steamid: String(resp.steamid) } };
 }
@@ -761,24 +855,39 @@ async function getBadges(args) {
   };
 }
 
-async function getCommunityBadgeProgress(args) {
-  const keyed = requireKey();
-  if (keyed.error) return missingKey();
-  if (!present(args?.badgeid)) return invalid("badgeid is required");
-  const id = resolveSteamId(args);
-  if (id.error) return invalid(id.message);
+async function fetchCommunityBadgeQuests(key, steamid, badgeid) {
   const r = await steamGet(
     "IPlayerService",
     "GetCommunityBadgeProgress",
     1,
-    { key: keyed.key, steamid: id.steamid, badgeid: asNum(args.badgeid) },
+    { key, steamid, badgeid },
     true,
   );
-  if (r.private) return { payload: privateResult("Community badge progress forbidden or unavailable") };
-  if (r.fail) return httpFail(r);
-  const quests = r.body?.response?.quests;
-  if (!Array.isArray(quests)) return { payload: privateResult("Community badge progress unavailable") };
-  return { payload: { steamid: id.steamid, badgeid: asNum(args.badgeid), quests } };
+  if (r.private) return { private: true };
+  if (r.fail) return { fail: r };
+  const quests = Array.isArray(r.body?.response?.quests) ? r.body.response.quests : [];
+  return { quests };
+}
+
+async function getCommunityBadgeProgress(args) {
+  const keyed = requireKey();
+  if (keyed.error) return missingKey();
+  const id = resolveSteamId(args);
+  if (id.error) return invalid(id.message);
+  if (!present(args?.badgeid)) {
+    const badgesR = await steamGet("IPlayerService", "GetBadges", 1, { key: keyed.key, steamid: id.steamid }, true);
+    if (badgesR.private) return { payload: privateResult("Community badge progress forbidden or unavailable") };
+    if (badgesR.fail) return httpFail(badgesR);
+    const progress = await fetchCommunityBadgeQuests(keyed.key, id.steamid, COMMUNITY_BADGEID);
+    if (progress.private) return { payload: privateResult("Community badge progress forbidden or unavailable") };
+    if (progress.fail) return httpFail(progress.fail);
+    return { payload: { steamid: id.steamid, badges: [{ badgeid: COMMUNITY_BADGEID, quests: progress.quests }] } };
+  }
+  const badgeid = asNum(args.badgeid);
+  const progress = await fetchCommunityBadgeQuests(keyed.key, id.steamid, badgeid);
+  if (progress.private) return { payload: privateResult("Community badge progress forbidden or unavailable") };
+  if (progress.fail) return httpFail(progress.fail);
+  return { payload: { steamid: id.steamid, badgeid, quests: progress.quests } };
 }
 
 async function getAchievements(args) {
@@ -973,14 +1082,14 @@ async function getServersAtAddress(args) {
 async function upToDateCheck(args) {
   const bad = needAppid(args);
   if (bad) return bad;
-  if (!present(args?.version)) return invalid("version is required");
+  if (!present(args?.version)) return invalid("version is required (installed depot version; not GetSchemaForGame gameVersion)");
   const r = await steamGet("ISteamApps", "UpToDateCheck", 1, { appid: asNum(args.appid), version: asNum(args.version) });
   if (r.private) return { payload: privateResult("Up-to-date check forbidden or unavailable") };
   if (r.fail) return httpFail(r);
   const resp = r.body?.response;
   if (!resp) return { payload: privateResult("Up-to-date check unavailable") };
   return {
-    payload: pick(resp, ["success", "up_to_date", "version_is_listable", "required_version", "message"]),
+    payload: pick(resp, ["success", "up_to_date", "version_is_listable", "required_version", "message", "error"]),
   };
 }
 
@@ -1059,14 +1168,41 @@ async function getTradeOffers(args) {
 async function getTradeOffer(args) {
   const keyed = requireKey();
   if (keyed.error) return missingKey();
-  if (!present(args?.tradeofferid)) return invalid("tradeofferid is required");
+  if (!present(args?.tradeofferid)) {
+    const listParams = {
+      key: keyed.key,
+      get_sent_offers: true,
+      get_received_offers: true,
+      active_only: true,
+    };
+    if (present(args?.language)) listParams.language = args.language;
+    const list = await steamGet("IEconService", "GetTradeOffers", 1, listParams, true);
+    if (list.private) return { payload: privateResult("Trade offer forbidden or unavailable (usually key owner only)") };
+    if (list.fail) return httpFail(list);
+    const sent = Array.isArray(list.body?.response?.trade_offers_sent) ? list.body.response.trade_offers_sent : [];
+    const received = Array.isArray(list.body?.response?.trade_offers_received)
+      ? list.body.response.trade_offers_received
+      : [];
+    const offers = [...sent, ...received];
+    if (offers.length === 0) return notFound("no trade offers");
+    if (offers.length > 1) {
+      return {
+        isError: true,
+        payload: {
+          error: "need_tradeofferid",
+          offer_ids: offers.map((o) => (o.tradeofferid != null ? String(o.tradeofferid) : "")).filter(Boolean),
+        },
+      };
+    }
+    return { payload: { offer: slimOffer(offers[0]) } };
+  }
   const params = { key: keyed.key, tradeofferid: args.tradeofferid };
   if (present(args?.language)) params.language = args.language;
   const r = await steamGet("IEconService", "GetTradeOffer", 1, params, true);
   if (r.private) return { payload: privateResult("Trade offer forbidden or unavailable (usually key owner only)") };
   if (r.fail) return httpFail(r);
   const offer = r.body?.response?.offer;
-  if (!offer) return { payload: privateResult("Trade offer unavailable") };
+  if (!offer) return notFound("Trade offer not found");
   return { payload: { offer: slimOffer(offer) } };
 }
 
@@ -1094,32 +1230,76 @@ async function getTradeOffersSummary(args) {
   };
 }
 
-async function getPublishedFileDetails(args) {
+async function queryWorkshopFileIds(appid, numperpage = WORKSHOP_LOOKUP_PAGE) {
+  const keyed = requireKey();
+  if (keyed.error) return { missingKey: true };
+  const r = await steamGet(
+    "IPublishedFileService",
+    "QueryFiles",
+    1,
+    { key: keyed.key, appid: asNum(appid), cursor: "*", numperpage, query_type: 1 },
+    true,
+  );
+  if (r.private) return { private: true };
+  if (r.fail) return { fail: r };
+  const details = r.body?.response?.publishedfiledetails;
+  const ids = Array.isArray(details)
+    ? details.map((f) => (f.publishedfileid != null ? String(f.publishedfileid) : "")).filter(Boolean)
+    : [];
+  return { ids };
+}
+
+async function resolveWorkshopIds(args, label) {
   const ids = asIdList(args?.publishedfileids);
-  if (!ids.length) return invalid("publishedfileids is required");
-  const params = { itemcount: ids.length, publishedfileids: ids };
+  if (ids.length) return { ids };
+  if (!present(args?.appid)) return { error: invalid(`${label} or appid is required`) };
+  const queried = await queryWorkshopFileIds(args.appid);
+  if (queried.missingKey) return { error: missingKey() };
+  if (queried.private) return { error: { payload: privateResult("Workshop query forbidden or unavailable") } };
+  if (queried.fail) return { error: httpFail(queried.fail) };
+  return { ids: queried.ids, fromApp: true };
+}
+
+async function getPublishedFileDetails(args) {
+  const resolved = await resolveWorkshopIds(args, "publishedfileids");
+  if (resolved.error) return resolved.error;
+  if (!resolved.ids.length) {
+    return { payload: { files: [], message: NO_WORKSHOP_MESSAGE } };
+  }
+  const params = { itemcount: resolved.ids.length, publishedfileids: resolved.ids };
   const r = await steamPost("ISteamRemoteStorage", "GetPublishedFileDetails", 1, params);
   if (r.private) return { payload: privateResult("Published file details forbidden or unavailable") };
   if (r.fail) return httpFail(r);
   const details = r.body?.response?.publishedfiledetails;
-  if (!Array.isArray(details)) return { payload: privateResult("No published file details returned") };
+  if (!Array.isArray(details)) {
+    return resolved.fromApp
+      ? { payload: { files: [], message: NO_WORKSHOP_MESSAGE } }
+      : { payload: { files: [] } };
+  }
   return { payload: { files: details.map(slimPublishedFile) } };
 }
 
 async function getCollectionDetails(args) {
-  const ids = asIdList(args?.publishedfileids);
-  if (!ids.length) return invalid("publishedfileids is required");
-  const params = { collectioncount: ids.length, publishedfileids: ids };
+  const resolved = await resolveWorkshopIds(args, "publishedfileids");
+  if (resolved.error) return resolved.error;
+  if (!resolved.ids.length) {
+    return { payload: { collections: [], message: NO_WORKSHOP_MESSAGE } };
+  }
+  const params = { collectioncount: resolved.ids.length, publishedfileids: resolved.ids };
   const r = await steamPost("ISteamRemoteStorage", "GetCollectionDetails", 1, params);
   if (r.private) return { payload: privateResult("Collection details forbidden or unavailable") };
   if (r.fail) return httpFail(r);
   const details = r.body?.response?.collectiondetails;
-  if (!Array.isArray(details)) return { payload: privateResult("No collection details returned") };
+  if (!Array.isArray(details)) {
+    return resolved.fromApp
+      ? { payload: { collections: [], message: NO_WORKSHOP_MESSAGE } }
+      : { payload: { collections: [] } };
+  }
   return {
     payload: {
       collections: details.map((c) => ({
         publishedfileid: c.publishedfileid != null ? String(c.publishedfileid) : undefined,
-        result: c.result,
+        result: c.result != null ? decodeEResult(c.result) : undefined,
         children: Array.isArray(c.children)
           ? c.children.map((ch) => ({
               publishedfileid: String(ch.publishedfileid),
@@ -1132,19 +1312,55 @@ async function getCollectionDetails(args) {
   };
 }
 
+async function ugcIdFromPublishedFile(publishedfileid) {
+  const r = await steamPost("ISteamRemoteStorage", "GetPublishedFileDetails", 1, {
+    itemcount: 1,
+    publishedfileids: [String(publishedfileid)],
+  });
+  if (r.private) return { private: true };
+  if (r.fail) return { fail: r };
+  const item = r.body?.response?.publishedfiledetails?.[0];
+  if (!item) return { missing: true };
+  if (Number(item.result) === 9) return { fileNotFound: true };
+  const ugcid = item.hcontent_file ?? item.ugcid;
+  if (ugcid == null || ugcid === "") return { missing: true };
+  return { ugcid: String(ugcid) };
+}
+
+function ugcLookupError(r) {
+  const statusCode = ugcStatusCode(r);
+  if (statusCode === 9) return fileNotFound("UGC file not found");
+  if (r.status === 404) return notFound("UGC file not found");
+  if (r.private && (r.status === 401 || r.status === 403)) {
+    return { payload: privateResult("UGC file details forbidden or unavailable") };
+  }
+  if (r.fail) return httpFail(r);
+  if (r.private) return { payload: privateResult("UGC file details forbidden or unavailable") };
+  return null;
+}
+
 async function getUgcFileDetails(args) {
   const keyed = requireKey();
   if (keyed.error) return missingKey();
-  if (!present(args?.ugcid)) return invalid("ugcid is required");
   const bad = needAppid(args);
   if (bad) return bad;
-  const params = { key: keyed.key, ugcid: args.ugcid, appid: asNum(args.appid) };
+  let ugcid = present(args?.ugcid) ? String(args.ugcid) : "";
+  if (!ugcid && present(args?.publishedfileid)) {
+    const resolved = await ugcIdFromPublishedFile(args.publishedfileid);
+    if (resolved.private) return { payload: privateResult("UGC file details forbidden or unavailable") };
+    if (resolved.fail) return httpFail(resolved.fail);
+    if (resolved.fileNotFound) return fileNotFound("Published file not found");
+    if (resolved.missing || !resolved.ugcid) return notFound("No ugcid on published file (missing hcontent_file)");
+    ugcid = resolved.ugcid;
+  }
+  if (!ugcid) return invalid("ugcid or publishedfileid is required");
+  const params = { key: keyed.key, ugcid, appid: asNum(args.appid) };
   if (present(args?.steamid)) params.steamid = args.steamid;
   const r = await steamGet("ISteamRemoteStorage", "GetUGCFileDetails", 1, params);
-  if (r.private) return { payload: privateResult("UGC file details forbidden or unavailable") };
-  if (r.fail) return httpFail(r);
+  const mapped = ugcLookupError(r);
+  if (mapped) return mapped;
   const data = r.body?.data;
-  if (!data) return { payload: privateResult("UGC file details unavailable") };
+  if (!data) return notFound("UGC file details unavailable");
   return { payload: data };
 }
 
@@ -1167,7 +1383,7 @@ async function queryFiles(args) {
   if (r.private) return { payload: privateResult("Workshop query forbidden or unavailable") };
   if (r.fail) return httpFail(r);
   const resp = r.body?.response;
-  if (!resp) return { payload: privateResult("Workshop query unavailable") };
+  if (!resp) return { payload: { total: 0, files: [] } };
   const files = Array.isArray(resp.publishedfiledetails) ? resp.publishedfiledetails.map(slimPublishedFile) : [];
   return {
     payload: {
@@ -1329,11 +1545,31 @@ function pump() {
   }
 }
 
-stdin.on("data", (chunk) => {
-  buf = Buffer.concat([buf, chunk]);
-  pump();
-});
-stdin.on("end", () => pump());
-stdin.on("error", () => process.exit(1));
-if (stdin.isTTY) process.stderr.write("steam-web MCP expects stdio JSON-RPC\n");
-stdin.resume();
+function startStdio() {
+  stdin.on("data", (chunk) => {
+    buf = Buffer.concat([buf, chunk]);
+    pump();
+  });
+  stdin.on("end", () => pump());
+  stdin.on("error", () => process.exit(1));
+  if (stdin.isTTY) process.stderr.write("steam-web MCP expects stdio JSON-RPC\n");
+  stdin.resume();
+}
+
+function isMainModule() {
+  try {
+    return import.meta.url === pathToFileURL(process.argv[1]).href;
+  } catch {
+    return true;
+  }
+}
+
+if (isMainModule()) startStdio();
+
+export {
+  SERVER_INFO,
+  callTool,
+  decodeEResult,
+  parseVanityInput,
+  ugcStatusCode,
+};

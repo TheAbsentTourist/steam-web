@@ -22,7 +22,7 @@ The MCP server reads, in order:
 1. Host environment: `STEAM_WEB_API_KEY` (required for keyed tools) and optional `STEAM_ID` (default 64-bit SteamID)
 2. If a value is still missing: `$PLUGIN_DATA/config.json`
 
-Copy `config.example.json` to `$PLUGIN_DATA/config.json` and fill in strings. Never commit `config.json` or `.env`. Cursor Configure maps `${STEAM_WEB_API_KEY}` and `${STEAM_ID}` from the installer — placeholders only, no values in this repo.
+Copy `config.example.json` to `$PLUGIN_DATA/config.json` and fill in strings. Cursor Configure maps `${STEAM_WEB_API_KEY}` and `${STEAM_ID}` from the installer — placeholders only, no values in this repo.
 
 ```json
 {
@@ -31,7 +31,7 @@ Copy `config.example.json` to `$PLUGIN_DATA/config.json` and fill in strings. Ne
 }
 ```
 
-Public methods (`steam_get_news`, current players, global achievement %, servers, up-to-date check, server info, published-file/collection details) work without a key. `steam_get_news` appid `440` is the live smoke test.
+Public methods (news, current players, global achievement %, servers, up-to-date check, server info, published-file/collection details) work without a key.
 
 ## Install locally in Cursor
 
@@ -45,60 +45,76 @@ Restart Cursor or run **Developer: Reload Window**. Open **Customize** and confi
 
 On Teams/Enterprise, local plugin imports may be disabled by admin policy.
 
-## Include vs skip
+## What you can do
 
-Documented **user-key** or **no-key** methods on `api.steampowered.com` only. Service interfaces send `input_json` as Valve documents.
+Official **user-key** and **no-key** methods on `api.steampowered.com` only. Service interfaces send `input_json` as Valve documents.
 
-| Include (this plugin) | Skip (ToS / publisher / undocumented) |
+Playtime maps `playtime_forever` → `playtime_forever_min` and `playtime_2weeks` → `playtime_2weeks_min`.
+
+**Vanity** is the custom `/id/` slug or a full `steamcommunity.com` URL (`/id/NAME`, `/groups/NAME`, `/gid/…`, `/profiles/STEAMID64`). It is not the persona name from a profile.
+
+**Trades** (`steam_get_trade_history`, `steam_get_trade_offers`, `steam_get_trade_offer`, `steam_get_trade_offers_summary`) return the **Web API key owner's** trades.
+
+**Workshop** tools need a workshop `appid` or a real `publishedfileid` / `ugcid`. They do not invent dummy ids.
+
+`steam_get_servers_at_address` needs a real `addr` (IP or IP:queryport). `steam_up_to_date_check` needs the caller's installed depot `version` — not `GetSchemaForGame` `gameVersion`.
+
+## Errors
+
+| Error | When |
 | --- | --- |
-| IPlayerService: GetOwnedGames, GetRecentlyPlayedGames, GetSteamLevel, GetBadges, GetCommunityBadgeProgress | GetSingleGamePlaytime (key must be associated with that appID) |
-| ISteamUser: GetPlayerSummaries, GetFriendList, GetPlayerBans, ResolveVanityURL | CheckAppOwnership, GetAppPriceInfo, GetDeletedSteamIDs, GetPublisherAppOwnership, GetUserGroupList |
-| ISteamUserStats: GetPlayerAchievements, GetUserStatsForGame, GetSchemaForGame, GetGlobalAchievementPercentagesForApp, GetNumberOfCurrentPlayers | GetGlobalStatsForGame, SetUserStatsForGame |
-| ISteamNews: GetNewsForApp | GetNewsForAppAuthed |
-| IStoreService: GetAppList (catalog dump, not prices) | store search, prices, wishlists |
-| ISteamApps: GetServersAtAddress, UpToDateCheck | GetAppList/v2 (deprecated 404), all publisher ISteamApps methods |
-| ISteamWebAPIUtil: GetServerInfo, GetSupportedAPIList | Inventing extra endpoints from the list |
-| IEconService: GetTradeHistory, GetTradeOffers, GetTradeOffer, GetTradeOffersSummary (typically **key owner** only) | FlushInventoryCache, FlushAssetAppearanceCache, FlushContextCache |
-| ISteamRemoteStorage: GetPublishedFileDetails, GetCollectionDetails, GetUGCFileDetails | Subscribe/Unsubscribe, EnumerateUserSubscribedFiles, SetUGCUsedByGC |
-| IPublishedFileService: QueryFiles (workshop search) | Delete, SetDeveloperMetadata, Update* ban/tag methods |
+| `private_or_unavailable` | HTTP 401/403 (private profile or key not allowed). Friends-list 401 is this. |
+| `not_found` | Missing trade offer (HTTP 200, no `offer`), no active offers when `tradeofferid` was omitted, or UGC HTTP 404. |
+| `file_not_found` | Valve EResult 9 on a published file / collection item, or GetUGCFileDetails status 9. |
+| `need_tradeofferid` | Several active offers when `tradeofferid` was omitted; includes `offer_ids`. |
+| `invalid_arguments` | Required argument missing (including `version` on up-to-date, `addr` on servers). |
+| `missing_key` | Keyed tool and `STEAM_WEB_API_KEY` is unset. |
+| `http_error` | Other non-401/403 HTTP failures. |
 
-Also skipped: `store.steampowered.com/api/*`, IWishlistService, SteamKit, `partner.steam-api.com`, Cursor Marketplace publish.
+HTTP 200 with empty community-badge `quests` is `{ quests: [] }`, not private. An app with no workshop items is `{ files: [] }` / `{ collections: [] }` (and a short message), not an error.
+
+## When an id is omitted
+
+The tool calls another documented method. It does not invent dummy `publishedfileid`, `ugcid`, `tradeofferid`, or IPs.
+
+- `steam_resolve_vanity` — strip a full community URL to the slug; `/profiles/STEAMID64` is returned as that steamid without ResolveVanityURL.
+- `steam_get_community_badge_progress` — omit `badgeid` to load the Steam Community badge (`2`), not games-collector `13`.
+- `steam_get_published_file_details` / `steam_get_collection_details` — omit `publishedfileids` and pass `appid` to QueryFiles then details.
+- `steam_get_ugc_file_details` — omit `ugcid` and pass a real `publishedfileid` to read `hcontent_file` from GetPublishedFileDetails.
+- `steam_get_trade_offer` — omit `tradeofferid` to list active sent+received offers (one / `need_tradeofferid` / `not_found`).
 
 ## Tools
 
-Playtime maps `playtime_forever` → `playtime_forever_min` and `playtime_2weeks` → `playtime_2weeks_min`. Private profiles return `{ "error": "private_or_unavailable", "message" }` or a tool error.
-
-| Tool | Official method | Key |
-| --- | --- | --- |
-| `steam_resolve_vanity` | ISteamUser/ResolveVanityURL/v1 | user |
-| `steam_get_profile` | ISteamUser/GetPlayerSummaries/v2 | user |
-| `steam_get_player_bans` | ISteamUser/GetPlayerBans/v1 | user |
-| `steam_get_friends` | ISteamUser/GetFriendList/v1 | user |
-| `steam_get_owned_games` | IPlayerService/GetOwnedGames/v1 | user |
-| `steam_get_recently_played` | IPlayerService/GetRecentlyPlayedGames/v1 | user |
-| `steam_get_steam_level` | IPlayerService/GetSteamLevel/v1 | user |
-| `steam_get_badges` | IPlayerService/GetBadges/v1 | user |
-| `steam_get_community_badge_progress` | IPlayerService/GetCommunityBadgeProgress/v1 | user |
-| `steam_get_achievements` | GetPlayerAchievements/v1 + GetSchemaForGame/v2 | user |
-| `steam_get_user_stats` | ISteamUserStats/GetUserStatsForGame/v2 | user |
-| `steam_get_schema_for_game` | ISteamUserStats/GetSchemaForGame/v2 | user |
-| `steam_get_global_achievement_percentages` | GetGlobalAchievementPercentagesForApp/v2 | none |
-| `steam_get_number_of_current_players` | GetNumberOfCurrentPlayers/v1 | none |
-| `steam_get_news` | ISteamNews/GetNewsForApp/v2 | none |
-| `steam_get_app_list` | IStoreService/GetAppList/v1 | any key |
-| `steam_get_servers_at_address` | ISteamApps/GetServersAtAddress/v1 | none |
-| `steam_up_to_date_check` | ISteamApps/UpToDateCheck/v1 | none |
-| `steam_get_server_info` | ISteamWebAPIUtil/GetServerInfo/v1 | none |
-| `steam_get_supported_api_list` | ISteamWebAPIUtil/GetSupportedAPIList/v1 | optional |
-| `steam_get_trade_history` | IEconService/GetTradeHistory/v1 | user (owner) |
-| `steam_get_trade_offers` | IEconService/GetTradeOffers/v1 | user (owner) |
-| `steam_get_trade_offer` | IEconService/GetTradeOffer/v1 | user (owner) |
-| `steam_get_trade_offers_summary` | IEconService/GetTradeOffersSummary/v1 | user (owner) |
-| `steam_get_published_file_details` | ISteamRemoteStorage/GetPublishedFileDetails/v1 | none |
-| `steam_get_collection_details` | ISteamRemoteStorage/GetCollectionDetails/v1 | none |
-| `steam_get_ugc_file_details` | ISteamRemoteStorage/GetUGCFileDetails/v1 | user |
-| `steam_query_files` | IPublishedFileService/QueryFiles/v1 | user |
-
+| Tool | Official method | Key | Notes |
+| --- | --- | --- | --- |
+| `steam_resolve_vanity` | ISteamUser/ResolveVanityURL/v1 | user | `/id/` slug or full community URL, not persona |
+| `steam_get_profile` | ISteamUser/GetPlayerSummaries/v2 | user | |
+| `steam_get_player_bans` | ISteamUser/GetPlayerBans/v1 | user | |
+| `steam_get_friends` | ISteamUser/GetFriendList/v1 | user | 401 → `private_or_unavailable` |
+| `steam_get_owned_games` | IPlayerService/GetOwnedGames/v1 | user | |
+| `steam_get_recently_played` | IPlayerService/GetRecentlyPlayedGames/v1 | user | |
+| `steam_get_steam_level` | IPlayerService/GetSteamLevel/v1 | user | |
+| `steam_get_badges` | IPlayerService/GetBadges/v1 | user | |
+| `steam_get_community_badge_progress` | IPlayerService/GetCommunityBadgeProgress/v1 | user | Optional `badgeid` (default community `2`) |
+| `steam_get_achievements` | GetPlayerAchievements/v1 + GetSchemaForGame/v2 | user | |
+| `steam_get_user_stats` | ISteamUserStats/GetUserStatsForGame/v2 | user | |
+| `steam_get_schema_for_game` | ISteamUserStats/GetSchemaForGame/v2 | user | |
+| `steam_get_global_achievement_percentages` | GetGlobalAchievementPercentagesForApp/v2 | none | |
+| `steam_get_number_of_current_players` | GetNumberOfCurrentPlayers/v1 | none | |
+| `steam_get_news` | ISteamNews/GetNewsForApp/v2 | none | |
+| `steam_get_app_list` | IStoreService/GetAppList/v1 | any key | Catalog dump, not prices |
+| `steam_get_servers_at_address` | ISteamApps/GetServersAtAddress/v1 | none | Requires real `addr` |
+| `steam_up_to_date_check` | ISteamApps/UpToDateCheck/v1 | none | Requires caller `version` |
+| `steam_get_server_info` | ISteamWebAPIUtil/GetServerInfo/v1 | none | |
+| `steam_get_supported_api_list` | ISteamWebAPIUtil/GetSupportedAPIList/v1 | optional | |
+| `steam_get_trade_history` | IEconService/GetTradeHistory/v1 | user (owner) | Key owner only |
+| `steam_get_trade_offers` | IEconService/GetTradeOffers/v1 | user (owner) | Key owner only |
+| `steam_get_trade_offer` | IEconService/GetTradeOffer/v1 | user (owner) | Optional `tradeofferid` |
+| `steam_get_trade_offers_summary` | IEconService/GetTradeOffersSummary/v1 | user (owner) | Key owner only |
+| `steam_get_published_file_details` | ISteamRemoteStorage/GetPublishedFileDetails/v1 | none | Real ids or workshop `appid` |
+| `steam_get_collection_details` | ISteamRemoteStorage/GetCollectionDetails/v1 | none | Real ids or workshop `appid` |
+| `steam_get_ugc_file_details` | ISteamRemoteStorage/GetUGCFileDetails/v1 | user | Real `ugcid` or `publishedfileid` |
+| `steam_query_files` | IPublishedFileService/QueryFiles/v1 | user | Requires workshop `appid` |
 
 ## Configure (Cursor)
 
@@ -106,8 +122,6 @@ On a catalog/Marketplace install, open **Plugins → Configure** and set:
 
 - `STEAM_WEB_API_KEY` (required)
 - `STEAM_ID` (optional default SteamID64)
-
-Do not put those values in the git repo.
 
 ## Contact and support
 
@@ -120,12 +134,3 @@ This is a community plugin. Best-effort GitHub issues; no SLA.
 ## Security
 
 See [SECURITY.md](SECURITY.md). Never paste a Steam Web API key or SteamID into an issue.
-
-## Verify
-
-See [VERIFY.md](VERIFY.md). Live news smoke (no key):
-
-```bash
-node --check server.mjs
-node scripts/smoke.mjs
-```
