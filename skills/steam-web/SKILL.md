@@ -25,7 +25,7 @@ Use these documented fallbacks only. If the caller did not omit the id, pass it 
 - Workshop details: `steam_get_published_file_details` / `steam_get_collection_details` can take a workshop `appid` instead of `publishedfileids` (QueryFiles, then details). No items → empty `files` / `collections`, not dummy id `1`.
 - UGC: omit `ugcid` and pass a real `publishedfileid` so GetPublishedFileDetails can supply `hcontent_file`.
 - One trade offer: omit `tradeofferid` to list active sent+received offers. One offer is returned; several yield `need_tradeofferid` + `offer_ids`; none is `not_found`. A missing offer on HTTP 200 is `not_found`, not private.
-- Servers still need a real `addr`. Up-to-date still needs the caller's installed depot `version` (not schema `gameVersion`).
+- Servers: omit `addr` on `steam_get_servers_at_address` to load GetPlayerSummaries `gameserverip` for `STEAM_ID`. If that field is set (in a multiplayer session), it is used as `addr`. Not in-game or missing/empty `gameserverip` → `invalid_arguments`. Do not invent `127.0.0.1` or a WAN IP. Do not call partner GetServerList. Up-to-date still needs the caller's installed depot `version` (not schema `gameVersion`).
 
 When an id is unknown, prefer the optional gathering below. Do not invent dummy ids (tradeofferid `0`, publishedfileid `1`, a guessed server IP, or a persona as a vanity slug).
 
@@ -58,7 +58,7 @@ When an id is unknown, prefer the optional gathering below. Do not invent dummy 
 ## Catalog, servers, API util
 
 - Store catalog appids (not prices, not search) → `steam_get_app_list` (`last_appid` to page)
-- Game servers at an IP → `steam_get_servers_at_address` (`addr` required). Player summaries do not include a dedicated-server IP; do not invent one.
+- Game servers at an IP → `steam_get_servers_at_address`. Omit `addr` to use GetPlayerSummaries `gameserverip` when in a multiplayer session; else `invalid_arguments`. Do not invent an IP.
 - Is this install current? → `steam_up_to_date_check` (`appid` and numeric installed depot `version` required). Do not invent `version` from GetSchemaForGame. Missing, empty, or non-numeric `version` → `invalid_arguments`. Valve `success: false` for a real version is passed through, not private.
 - Web API clock → `steam_get_server_info` (no key)
 - Official method catalog → `steam_get_supported_api_list` (optional key shows more)

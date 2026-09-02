@@ -16,7 +16,7 @@ function eq(actual, expected, label) {
   }
 }
 
-if (SERVER_INFO.version !== "0.2.2") {
+if (SERVER_INFO.version !== "0.2.3") {
   console.error("FAIL SERVER_INFO.version", SERVER_INFO);
   process.exit(1);
 }
@@ -127,7 +127,90 @@ const noVersion = await run("steam_up_to_date_check", { appid: 440 });
 eq(noVersion.payload.error, "invalid_arguments", "up-to-date requires caller version");
 
 const noAddr = await run("steam_get_servers_at_address", {});
-eq(noAddr.payload.error, "invalid_arguments", "servers require addr");
+eq(noAddr.payload.error, "invalid_arguments", "servers require addr or in-session gameserverip");
+eq(
+  noAddr.payload.message,
+  "addr is required (or be in a multiplayer session so profile gameserverip is set)",
+  "servers omit-addr message",
+);
+if (calls.some((c) => /GetServersAtAddress|GetServerList/.test(c.href))) {
+  console.error("FAIL omit addr without STEAM_ID must not call GetServersAtAddress or GetServerList");
+  process.exit(1);
+}
+
+process.env.STEAM_ID = "76561198000000000";
+scripted.push({
+  status: 200,
+  body: { response: { players: [{ steamid: "76561198000000000", personaname: "x", gameid: "440" }] } },
+});
+const noGameServerIp = await run("steam_get_servers_at_address", {});
+eq(noGameServerIp.payload.error, "invalid_arguments", "in-game without gameserverip is invalid_arguments");
+if (calls.some((c) => /GetServersAtAddress|GetServerList|127\.0\.0\.1/.test(c.href))) {
+  console.error("FAIL missing gameserverip must not call GetServersAtAddress, GetServerList, or invent 127.0.0.1");
+  process.exit(1);
+}
+if (!calls.some((c) => /GetPlayerSummaries/.test(c.href))) {
+  console.error("FAIL omit addr with STEAM_ID must call GetPlayerSummaries");
+  process.exit(1);
+}
+
+scripted.push({
+  status: 200,
+  body: {
+    response: {
+      players: [{ steamid: "76561198000000000", personaname: "x", gameserverip: "0.0.0.0:0" }],
+    },
+  },
+});
+const zeroIp = await run("steam_get_servers_at_address", {});
+eq(zeroIp.payload.error, "invalid_arguments", "0.0.0.0:0 gameserverip is not a session addr");
+if (calls.filter((c) => /GetServersAtAddress/.test(c.href)).length) {
+  console.error("FAIL dummy 0.0.0.0:0 must not call GetServersAtAddress");
+  process.exit(1);
+}
+
+scripted.push({
+  status: 200,
+  body: {
+    response: {
+      players: [{ steamid: "76561198000000000", gameserverip: "[203.0.113.10]:27015" }],
+    },
+  },
+});
+scripted.push({
+  status: 200,
+  body: { response: { success: true, servers: [{ addr: "203.0.113.10:27015", appid: 440 }] } },
+});
+const gathered = await run("steam_get_servers_at_address", {});
+eq(gathered.payload.success, true, "gathered gameserverip GetServersAtAddress success");
+eq(gathered.payload.servers?.[0]?.appid, 440, "gathered servers payload");
+const gatheredCall = [...calls].reverse().find((c) => /GetServersAtAddress/.test(c.href));
+if (!gatheredCall || !/addr=203\.0\.113\.10%3A27015|addr=203\.0\.113\.10:27015/.test(gatheredCall.href)) {
+  console.error("FAIL gathered addr must be gameserverip with brackets stripped", gatheredCall?.href);
+  process.exit(1);
+}
+if (calls.some((c) => /GetServerList/.test(c.href))) {
+  console.error("FAIL must not call partner GetServerList");
+  process.exit(1);
+}
+
+const beforeProvided = calls.length;
+scripted.push({
+  status: 200,
+  body: { response: { success: true, servers: [] } },
+});
+const provided = await run("steam_get_servers_at_address", { addr: "198.51.100.20:27015" });
+eq(provided.payload.success, true, "provided addr success");
+const providedCalls = calls.slice(beforeProvided);
+if (providedCalls.some((c) => /GetPlayerSummaries/.test(c.href))) {
+  console.error("FAIL provided addr must not call GetPlayerSummaries");
+  process.exit(1);
+}
+if (!providedCalls.some((c) => /GetServersAtAddress/.test(c.href) && /198\.51\.100\.20/.test(c.href))) {
+  console.error("FAIL provided addr must call GetServersAtAddress with that addr");
+  process.exit(1);
+}
+delete process.env.STEAM_ID;
 
 scripted.push({ status: 200, body: { response: { success: false, error: "Couldn't get app info for the app specified." } } });
 const outdated = await run("steam_up_to_date_check", { appid: 1, version: 1 });

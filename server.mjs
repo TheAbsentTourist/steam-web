@@ -10,7 +10,7 @@ import { stdin, stdout } from "node:process";
 import { pathToFileURL } from "node:url";
 
 const PROTOCOL_VERSION = "2024-11-05";
-const SERVER_INFO = { name: "steam-web", version: "0.2.2" };
+const SERVER_INFO = { name: "steam-web", version: "0.2.3" };
 const API_HOST = "https://api.steampowered.com";
 const TIMEOUT_MS = 15_000;
 const KEY_HELP =
@@ -590,11 +590,17 @@ const TOOLS = [
   },
   {
     name: "steam_get_servers_at_address",
-    description: "ISteamApps/GetServersAtAddress/v1. Game servers at an IP or IP:queryport. No key.",
+    description:
+      "ISteamApps/GetServersAtAddress/v1. Game servers at an IP or IP:queryport. Omit addr to use GetPlayerSummaries gameserverip when that SteamID is in a multiplayer session; otherwise invalid_arguments. Do not invent an IP. No key when addr is provided; gathering uses the user key.",
     inputSchema: {
       type: "object",
-      properties: { addr: { type: "string", description: "IP or IP:queryport." } },
-      required: ["addr"],
+      properties: {
+        addr: {
+          type: "string",
+          description:
+            "IP or IP:queryport. Omit to read gameserverip from GetPlayerSummaries (STEAM_ID) when in a session. Missing/empty gameserverip → invalid_arguments.",
+        },
+      },
     },
   },
   {
@@ -1217,9 +1223,51 @@ async function getAppList(args) {
   };
 }
 
+const ADDR_REQUIRED_MSG =
+  "addr is required (or be in a multiplayer session so profile gameserverip is set)";
+
+function stripAddrBrackets(raw) {
+  return String(raw ?? "")
+    .trim()
+    .replace(/\[/g, "")
+    .replace(/\]/g, "");
+}
+
+function isUnusableGameserverIp(addr) {
+  if (!present(addr)) return true;
+  const s = String(addr).trim().toLowerCase();
+  if (!s) return true;
+  if (s === "0.0.0.0" || s.startsWith("0.0.0.0:")) return true;
+  return false;
+}
+
+async function gatherAddrFromPlayerSummary(args) {
+  const keyed = requireKey();
+  if (keyed.error) return { errorResult: missingKey() };
+  const id = resolveSteamId(args);
+  if (id.error) return { errorResult: invalid(ADDR_REQUIRED_MSG) };
+  const r = await steamGet("ISteamUser", "GetPlayerSummaries", 2, { key: keyed.key, steamids: id.steamid });
+  if (isForbidden(r) || r.private) {
+    return { errorResult: { payload: privateResult("Player summaries forbidden or unavailable") } };
+  }
+  if (r.fail) return { errorResult: httpFail(r) };
+  const players = r.body?.response?.players;
+  const player = Array.isArray(players) && players.length ? players[0] : undefined;
+  const addr = stripAddrBrackets(player?.gameserverip);
+  if (isUnusableGameserverIp(addr)) return { errorResult: invalid(ADDR_REQUIRED_MSG) };
+  return { addr };
+}
+
 async function getServersAtAddress(args) {
-  if (!present(args?.addr)) return invalid("addr is required");
-  const r = await steamGet("ISteamApps", "GetServersAtAddress", 1, { addr: args.addr });
+  let addr;
+  if (present(args?.addr)) {
+    addr = args.addr;
+  } else {
+    const gathered = await gatherAddrFromPlayerSummary(args);
+    if (gathered.errorResult) return gathered.errorResult;
+    addr = gathered.addr;
+  }
+  const r = await steamGet("ISteamApps", "GetServersAtAddress", 1, { addr });
   if (r.private) return { payload: privateResult("Server list forbidden or unavailable") };
   if (r.fail) return httpFail(r);
   const resp = r.body?.response;

@@ -31,7 +31,7 @@ Copy `config.example.json` to `$PLUGIN_DATA/config.json` and fill in strings:
 }
 ```
 
-These work without a key: news, current players, global achievement %, servers, up-to-date check, server info, and published-file/collection details.
+These work without a key: news, current players, global achievement %, servers (when `addr` is provided), up-to-date check, server info, and published-file/collection details.
 
 ## Install locally in Cursor
 
@@ -53,7 +53,7 @@ On Teams/Enterprise, local plugin imports may be disabled by admin policy.
 
 **Catalog.** Official catalog appids and names. Not store prices or wishlists.
 
-**Game servers and version check.** Dedicated servers at an IP. `steam_up_to_date_check` needs the installed depot `version` (do not invent one from GetSchemaForGame).
+**Game servers and version check.** Dedicated servers at an IP. Omit `addr` on `steam_get_servers_at_address` to use the profile `gameserverip` when that SteamID is in a multiplayer session; otherwise `invalid_arguments`. Do not invent an IP. `steam_up_to_date_check` needs the installed depot `version` (do not invent one from GetSchemaForGame).
 
 **Web API util.** Steam Web API server time, and the official supported-method list (an optional key reveals more).
 
@@ -83,7 +83,7 @@ Private or hidden profiles, including a private friend list (HTTP 401/403), retu
 | `steam_get_number_of_current_players` | Players in-app on Steam right now |
 | `steam_get_news` | Official app news posts |
 | `steam_get_app_list` | Catalog appids and names (paged; any key) |
-| `steam_get_servers_at_address` | Game servers at an IP |
+| `steam_get_servers_at_address` | Game servers at an IP (omit `addr` to use profile `gameserverip` when in a session) |
 | `steam_up_to_date_check` | Whether an installed depot version is current (`version` required) |
 | `steam_get_server_info` | Steam Web API server time |
 | `steam_get_supported_api_list` | Official method catalog |
