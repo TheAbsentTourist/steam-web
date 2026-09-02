@@ -8,7 +8,8 @@
       "cwd": "${PLUGIN_ROOT}",
       "env": {
         "STEAM_WEB_API_KEY": "${STEAM_WEB_API_KEY}",
-        "STEAM_ID": "${STEAM_ID}"
+        "STEAM_ID": "${STEAM_ID}",
+        "PATH": "C:\\Program Files\\nodejs;C:\\Program Files (x86)\\nodejs:/usr/local/bin:/opt/homebrew/bin:/usr/bin:/bin:${PATH}"
       }
     }
   }

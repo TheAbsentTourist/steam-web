@@ -8,7 +8,7 @@ MIT. Author [TheAbsentTourist](https://github.com/TheAbsentTourist), chucktastic
 
 ## Requirements
 
-- Node.js 18+
+- Node.js 18+ on the PATH Cursor inherits at launch (not only in a terminal)
 - A **user** Steam Web API key for keyed tools
 
 Get a key at [https://steamcommunity.com/dev/apikey](https://steamcommunity.com/dev/apikey) (sign in with Steam). Valve caps usage at 100,000 calls per day.
@@ -36,6 +36,8 @@ These work without a key: news, current players, global achievement %, servers (
 ## Install locally in Cursor
 
 Copy this directory to `~/.cursor/plugins/local/steam-web`. Restart Cursor or run **Developer: Reload Window**, then open **Customize** and confirm the `steam-web` skill and MCP server. Set `STEAM_WEB_API_KEY` (and optional `STEAM_ID`) in the host environment, in `config.json` under the client-managed `PLUGIN_DATA` directory, or via Configure.
+
+If logs show `spawn node ENOENT`, Node 18+ is not on the PATH Cursor inherits at launch (a terminal `node` is not enough). Use the official installer, then fully quit and reopen Cursor. On Windows, `where node` in cmd.exe must print a path. nvm/fnm/volta/scoop often fail for GUI apps.
 
 On Teams/Enterprise, local plugin imports may be disabled by admin policy.
 
