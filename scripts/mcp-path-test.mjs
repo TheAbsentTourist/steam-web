@@ -1,9 +1,13 @@
 #!/usr/bin/env node
 /**
  * Offline mcp.json launcher checks. No Steam, no secrets.
- * Windows-first: Cursor spawn is cmd.exe with args that expand
- * ${PLUGIN_ROOT}\\scripts\\run-mcp.cmd (finds node.exe when PATH is broken).
+ * Windows-first: Cursor spawn is cmd.exe with relative args
+ * scripts\\run-mcp.cmd (finds node.exe when PATH is broken).
  * Grok Bot still runs node ./server.mjs.
+ *
+ * Cursor currently does not expand ${PLUGIN_ROOT} in plugin MCP args.
+ * An unexpanded "${PLUGIN_ROOT}\\scripts\\run-mcp.cmd" token →
+ * "The system cannot find the path specified."
  *
  * ./scripts/run-mcp.cmd as command is unreliable on Windows Cursor today:
  * Cursor resolves ./ against the Cursor install dir
@@ -13,8 +17,11 @@
  * cwd is omitted (spec default = plugin root) or "./" — never ${PLUGIN_ROOT}.
  * Cursor expanding ${PLUGIN_ROOT} to an unusable cwd makes spawn() report
  * ENOENT for C:\WINDOWS\system32\cmd.exe even when that file exists.
+ * If relative scripts\\run-mcp.cmd still path-specified, Cursor cwd is not
+ * the plugin root (file that upstream).
  *
- * command must NOT use placeholders (no expansion there). Args do expand.
+ * Do not put ${PLUGIN_ROOT} in command or args until Cursor expands it.
+ * Env placeholders for STEAM_WEB_API_KEY / STEAM_ID stay (those work).
  */
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
@@ -41,8 +48,10 @@ assert.notEqual(server.command, "${PLUGIN_ROOT}/bin/steam-web-mcp");
 assert.doesNotMatch(server.command, /\$\{NODE\}|\$\{PLUGIN_ROOT\}|\$\{STEAM_WEB_NODE\}/);
 assert.doesNotMatch(server.command, /Program Files/i);
 assert.doesNotMatch(mcpRaw, /C:\\\\Program Files|C:\\Program Files/i);
-assert.deepEqual(server.args, ["/d", "/c", "call", "${PLUGIN_ROOT}\\scripts\\run-mcp.cmd"]);
-assert.match(mcpRaw, /"\$\{PLUGIN_ROOT\}\\\\scripts\\\\run-mcp\.cmd"/);
+assert.deepEqual(server.args, ["/d", "/c", "call", "scripts\\run-mcp.cmd"]);
+assert.match(mcpRaw, /"scripts\\\\run-mcp\.cmd"/);
+assert.doesNotMatch(mcpRaw, /\$\{PLUGIN_ROOT\}/);
+assert.ok(!server.args.some((a) => String(a).includes("${PLUGIN_ROOT}")));
 assert.ok(!server.args.some((a) => String(a).includes("steam-web-mcp")));
 assert.ok(!server.args.some((a) => /[ ]/.test(String(a))), "args must stay separate tokens");
 assert.ok(!server.args.some((a) => String(a).startsWith("/c ")));
@@ -253,7 +262,7 @@ if (!cmdExeAvailable()) {
     'mcp-path-test: skip NODE persist proof. On Windows: cmd /c "call scripts\\find-node.cmd & if defined NODE (echo OK %NODE%) else (echo FAIL)"',
   );
   console.log("mcp-path-test: skip missing-node .cmd stderr check (no cmd.exe)");
-  console.log("mcp-path-test: skip PATH-stripped cmd.exe /d /c call <abs run-mcp.cmd> (cmd.exe not available on this host)");
+  console.log("mcp-path-test: skip PATH-stripped cmd.exe /d /c call scripts\\\\run-mcp.cmd (cmd.exe not available on this host)");
 } else {
   const persist = runCmdC("call scripts\\find-node.cmd & if defined NODE (echo OK %NODE%) else (echo FAIL)");
   assert.equal(persist.status, 0, persist.stderr || "find-node.cmd exit");
@@ -264,7 +273,8 @@ if (!cmdExeAvailable()) {
   assert.match(persistPath.stdout || "", /OK /);
   assert.match(persistPath.stdout || "", /node(\.exe)?/i);
 
-  const missing = spawnSync("cmd.exe", ["/d", "/c", "call", win], {
+  const mcpArgs = ["/d", "/c", "call", "scripts\\run-mcp.cmd"];
+  const missing = spawnSync("cmd.exe", mcpArgs, {
     cwd: root,
     env: envMissingNode(process.env),
     encoding: "utf8",
@@ -280,10 +290,10 @@ if (!cmdExeAvailable()) {
   const stripped = envWithoutNodeOnPath(process.env);
   const pfNode = programFilesNode();
   if (pfNode) {
-    await spawnMcp("cmd.exe", ["/d", "/c", "call", win], stripped, { cwd: root });
+    await spawnMcp("cmd.exe", mcpArgs, stripped, { cwd: root });
   } else {
     stripped.STEAM_WEB_NODE = process.execPath;
-    await spawnMcp("cmd.exe", ["/d", "/c", "call", win], stripped, { cwd: root });
+    await spawnMcp("cmd.exe", mcpArgs, stripped, { cwd: root });
     console.log("mcp-path-test: PATH-stripped .cmd used STEAM_WEB_NODE (no Program Files node.exe)");
   }
 }
