@@ -1,5 +1,5 @@
 #!/bin/sh
-# steam-web MCP launcher. Cursor spawn() executes this file, not `node`.
+# Optional terminal helper. Cursor spawn uses ${NODE} + ./server.mjs, not this file.
 # Builtins only for path math so a Flatpak PATH without coreutils still works.
 case $0 in
   */*) dir=${0%/*} ;;
