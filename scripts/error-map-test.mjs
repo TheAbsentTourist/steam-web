@@ -13,7 +13,7 @@ import {
   SERVER_INFO,
 } from "../server.mjs";
 
-assert.equal(SERVER_INFO.version, "0.2.1");
+assert.equal(SERVER_INFO.version, "0.2.2");
 
 const vanityUrl = parseVanityInput("https://steamcommunity.com/id/ExampleUser/");
 assert.equal(vanityUrl.vanityurl, "ExampleUser");
@@ -121,11 +121,24 @@ globalThis.fetch = async (url, init = {}) => {
   if (path.includes("/IPublishedFileService/QueryFiles/")) {
     return jsonResponse({ response: { total: 0, publishedfiledetails: [] } });
   }
+  if (path.includes("/ISteamUser/GetFriendList/")) {
+    return new Response("{}", { status: 401, headers: { "Content-Type": "application/json" } });
+  }
+  if (path.includes("/IPlayerService/GetOwnedGames/")) {
+    return new Response("{}", { status: 403, headers: { "Content-Type": "application/json" } });
+  }
   if (path.includes("/ISteamUserStats/GetSchemaForGame/")) {
     return jsonResponse({ game: { gameName: "Test", gameVersion: "123" } });
   }
   if (path.includes("/ISteamApps/UpToDateCheck/")) {
-    const version = new URL(href).searchParams.get("version");
+    const u = new URL(href);
+    const version = u.searchParams.get("version");
+    const appid = u.searchParams.get("appid");
+    if (appid === "1") {
+      return jsonResponse({
+        response: { success: false, message: "Couldn't get app info for the app specified." },
+      });
+    }
     return jsonResponse({
       response: { success: true, up_to_date: version === "123", required_version: 123 },
     });
@@ -222,9 +235,49 @@ function payloadOf(result) {
 }
 
 {
+  const before = calls.length;
+  const r = await callTool("steam_get_friends", { steamid: "76561198000000000" });
+  assert.equal(r.payload.error, "private_or_unavailable");
+  assert.match(r.payload.message, /Friend list forbidden or unavailable/i);
+  assert.notEqual(r.payload.error, "http_error");
+  assert.notEqual(r.payload.message, "{}");
+  assert.ok(
+    calls.slice(before).some((c) => c.href.includes("GetFriendList")),
+    "friends 401 should still call GetFriendList",
+  );
+}
+
+{
+  const r = await callTool("steam_get_owned_games", { steamid: "76561198000000000" });
+  assert.equal(r.payload.error, "private_or_unavailable");
+  assert.notEqual(r.payload.error, "http_error");
+  assert.notEqual(r.payload.message, "{}");
+}
+
+{
+  const before = calls.length;
   const r = await callTool("steam_up_to_date_check", { appid: 440 });
-  assert.equal(r.payload.success, true);
-  assert.equal(r.payload.up_to_date, true);
+  assert.equal(r.isError, true);
+  assert.equal(r.payload.error, "invalid_arguments");
+  assert.match(r.payload.message, /installed depot version/i);
+  assert.equal(
+    calls.slice(before).some((c) => c.href.includes("UpToDateCheck") || c.href.includes("GetSchemaForGame")),
+    false,
+    "must not call Valve without a numeric installed version",
+  );
+}
+
+{
+  const before = calls.length;
+  const empty = await callTool("steam_up_to_date_check", { appid: 440, version: "" });
+  assert.equal(empty.payload.error, "invalid_arguments");
+  const bogus = await callTool("steam_up_to_date_check", { appid: 440, version: "latest" });
+  assert.equal(bogus.payload.error, "invalid_arguments");
+  assert.equal(
+    calls.slice(before).some((c) => c.href.includes("UpToDateCheck") || c.href.includes("GetSchemaForGame")),
+    false,
+    "empty/non-numeric version must not hit Valve",
+  );
 }
 
 {
@@ -232,6 +285,12 @@ function payloadOf(result) {
   assert.equal(r.payload.success, true);
   assert.equal(r.payload.up_to_date, false);
   assert.equal(r.payload.required_version, 123);
+}
+
+{
+  const r = await callTool("steam_up_to_date_check", { appid: 1, version: 1 });
+  assert.equal(r.payload.success, false);
+  assert.notEqual(r.payload.error, "private_or_unavailable");
 }
 
 {

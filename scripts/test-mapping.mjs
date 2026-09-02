@@ -16,7 +16,7 @@ function eq(actual, expected, label) {
   }
 }
 
-if (SERVER_INFO.version !== "0.2.1") {
+if (SERVER_INFO.version !== "0.2.2") {
   console.error("FAIL SERVER_INFO.version", SERVER_INFO);
   process.exit(1);
 }
@@ -117,9 +117,11 @@ scripted.push({ status: 404, body: "not found" });
 const ugcHttp = await run("steam_get_ugc_file_details", { ugcid: "abc", appid: 440 });
 eq(ugcHttp.payload.error, "not_found", "UGC HTTP 404 is not_found");
 
-scripted.push({ status: 401, body: "" });
+scripted.push({ status: 401, body: "{}" });
 const friends = await run("steam_get_friends", { steamid: "1" });
 eq(friends.payload.error, "private_or_unavailable", "friends 401 stays private");
+eq(friends.payload.message, "Friend list forbidden or unavailable", "friends 401 message");
+eq(friends.payload.status, undefined, "friends 401 is not raw http_error status");
 
 const noVersion = await run("steam_up_to_date_check", { appid: 440 });
 eq(noVersion.payload.error, "invalid_arguments", "up-to-date requires caller version");

@@ -53,7 +53,7 @@ On Teams/Enterprise, local plugin imports may be disabled by admin policy.
 
 **Catalog.** Official catalog appids and names. Not store prices or wishlists.
 
-**Game servers and version check.** Dedicated servers at an IP, and whether an installed version is current.
+**Game servers and version check.** Dedicated servers at an IP. `steam_up_to_date_check` needs the installed depot `version` (do not invent one from GetSchemaForGame).
 
 **Web API util.** Steam Web API server time, and the official supported-method list (an optional key reveals more).
 
@@ -61,7 +61,7 @@ On Teams/Enterprise, local plugin imports may be disabled by admin policy.
 
 **Workshop.** Published-file details, collection children, one UGC file, and Workshop search.
 
-Private or hidden profiles return `{ "error": "private_or_unavailable", "message" }` or a tool error.
+Private or hidden profiles, including a private friend list (HTTP 401/403), return `{ "error": "private_or_unavailable", "message" }` — not a raw `http_error` with an empty body.
 
 ## Tools
 
@@ -70,7 +70,7 @@ Private or hidden profiles return `{ "error": "private_or_unavailable", "message
 | `steam_resolve_vanity` | SteamID for a vanity `/id/` or group URL |
 | `steam_get_profile` | Persona, avatar, visibility, current game (up to 100 SteamIDs) |
 | `steam_get_player_bans` | VAC, community, and economy ban status |
-| `steam_get_friends` | Friend list |
+| `steam_get_friends` | Friend list (`private_or_unavailable` on 401/403) |
 | `steam_get_owned_games` | Owned games and lifetime playtime |
 | `steam_get_recently_played` | Recently played games and two-week playtime |
 | `steam_get_steam_level` | Steam XP level |
@@ -84,7 +84,7 @@ Private or hidden profiles return `{ "error": "private_or_unavailable", "message
 | `steam_get_news` | Official app news posts |
 | `steam_get_app_list` | Catalog appids and names (paged; any key) |
 | `steam_get_servers_at_address` | Game servers at an IP |
-| `steam_up_to_date_check` | Whether an installed version is current |
+| `steam_up_to_date_check` | Whether an installed depot version is current (`version` required) |
 | `steam_get_server_info` | Steam Web API server time |
 | `steam_get_supported_api_list` | Official method catalog |
 | `steam_get_trade_history` | Key owner's trade history |
