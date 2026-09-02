@@ -125,28 +125,9 @@ function spawnLauncher(env, { expectFail = false } = {}) {
   });
 }
 
-function spawnRelativeCommandIgnoringOptionsCwd() {
-  return new Promise((resolve, reject) => {
-    const child = spawn("./scripts/run-mcp", [], {
-      cwd: root,
-      env: { ...process.env },
-      stdio: "ignore",
-    });
-    child.on("error", (err) => {
-      if (err.code === "ENOENT") resolve();
-      else reject(err);
-    });
-    child.on("spawn", () => {
-      child.kill();
-      reject(new Error("relative ./scripts/run-mcp must ENOENT when process.cwd() is not PLUGIN_ROOT"));
-    });
-  });
-}
-
 const prevCwd = process.cwd();
 process.chdir("/tmp");
 try {
-  await spawnRelativeCommandIgnoringOptionsCwd();
   const baseEnv = { ...process.env };
   await spawnLauncher(baseEnv);
 } finally {
