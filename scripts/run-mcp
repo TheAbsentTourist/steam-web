@@ -1,5 +1,5 @@
 #!/bin/sh
-# Optional terminal helper. Cursor spawn uses ${NODE} + ./server.mjs, not this file.
+# Optional terminal helper. Cursor spawn uses node + ${PLUGIN_ROOT}/server.mjs, not this file.
 # Builtins only for path math so a Flatpak PATH without coreutils still works.
 case $0 in
   */*) dir=${0%/*} ;;

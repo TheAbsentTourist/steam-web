@@ -22,7 +22,7 @@ Validated with Ajv 2020-12 (`ajv@8` installed only under `/tmp/steam-web-verify`
 | `plugin.json` | **PASS** (`$id` `https://agent-plugins.org/schemas/1.0.0/plugin.schema.json`) |
 | `mcp.json` | **PASS** (`$id` `https://agent-plugins.org/schemas/1.0.0/mcp.schema.json`) |
 
-`plugin.json` uses the closed 1.0.0 field set (`author` is an object). `mcp.json` interpolates `${NODE}` (command), `${STEAM_WEB_API_KEY}`, and `${STEAM_ID}`; those are placeholders, not committed secrets or a user-specific Node path. `command` is `${NODE}` with `args` `["./server.mjs"]` and `cwd` `${PLUGIN_ROOT}`. Cursor Linux AppImage overlays `/bin`, so `/bin/sh` and bare `node` both ENOENT; relative `./scripts/run-mcp` also ENOENT because cwd is not applied to `command`.
+`plugin.json` uses the closed 1.0.0 field set (`author` is an object). `mcp.json` interpolates `${PLUGIN_ROOT}` (args/cwd), `${STEAM_WEB_API_KEY}`, `${STEAM_ID}`, and `${PATH}` / `${HOME}` / nvm-fnm bins in `env.PATH`; those are placeholders, not committed secrets or a user-specific dummy. `command` is `node` with `args` `["${PLUGIN_ROOT}/server.mjs"]` and `cwd` `${PLUGIN_ROOT}`. Cursor does not interpolate plugin variables in `command` (confirmed `spawn ${NODE} ENOENT`). AppImage overlays `/bin`, so this spawn also does not use `/bin/sh` or `./scripts/run-mcp`. `env.PATH` prepends Linuxbrew/Homebrew/nvm/fnm dirs and appends `${PATH}`.
 
 ## 2. Syntax
 
@@ -58,14 +58,14 @@ The script:
 node scripts/mcp-path-test.mjs
 ```
 
-Asserts `command` is `${NODE}` with `args` `["./server.mjs"]` (not `/bin/sh` / bare `node` / `./scripts/run-mcp` / a hardcoded linuxbrew path), `.cursor-plugin/plugin.json` declares required `NODE`, initialize works as absolute Node + `./server.mjs`, and `scripts/run-mcp` remains an optional terminal helper (executable; missing-Node run prints `spawn node ENOENT`, not a Steam API failure).
+Asserts `command` is `node` with `args` `["${PLUGIN_ROOT}/server.mjs"]` (not `/bin/sh` / `${NODE}` / `./scripts/run-mcp`), `env.PATH` prepends Linuxbrew/Homebrew/nvm/fnm dirs and appends `${PATH}` (no user-specific dummy), `.cursor-plugin/plugin.json` does not require `NODE`, initialize works as `node` + absolute `server.mjs`, and `scripts/run-mcp` remains an optional terminal helper (executable; missing-Node run prints `spawn node ENOENT`, not a Steam API failure).
 
 **PASS**
 
 ## Cannot prove here
 
 - Cursor **Customize** UI / local plugin loader on a user machine (`~/.cursor/plugins/local/steam-web` as a real directory, not a symlink)
-- Cursor Linux AppImage / Flatpak GUI spawn of the interpolated `${NODE}` absolute path (plugin variable substitution into `command`)
+- Cursor Linux AppImage / Flatpak GUI spawn of `node` with interpolated `${PLUGIN_ROOT}/server.mjs` and the augmented `PATH`
 - Host injection of `PLUGIN_ROOT` / `PLUGIN_DATA`
 - Keyed tools (`STEAM_WEB_API_KEY` absent): library, friends, achievements, trades, Workshop search, `IStoreService/GetAppList`
 - Private-profile `401`/`403` → `private_or_unavailable` against a real hidden profile

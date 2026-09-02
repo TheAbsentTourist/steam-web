@@ -1,5 +1,5 @@
 @echo off
-REM Optional terminal helper. Cursor spawn uses ${NODE} + ./server.mjs, not this file.
+REM Optional terminal helper. Cursor spawn uses node + ${PLUGIN_ROOT}/server.mjs, not this file.
 setlocal EnableExtensions
 set "SERVER=%~dp0..\server.mjs"
 

@@ -1,9 +1,10 @@
 #!/usr/bin/env node
 /**
- * Offline mcp.json launcher checks. No Steam, no secrets.
- * Proves Cursor spawn() uses ${NODE} with ./server.mjs (not /bin/sh, not
- * bare `node`, not ./scripts/run-mcp). scripts/run-mcp remains an optional
- * terminal helper only.
+ * Offline mcp.json spawn-PATH checks. No Steam, no secrets.
+ * Proves command stays `node` (not /bin/sh, not ./scripts/run-mcp, not
+ * ${NODE}), args use ${PLUGIN_ROOT}/server.mjs, and PATH prepends
+ * well-known Node dirs without dropping ${PATH}. scripts/run-mcp remains
+ * an optional terminal helper only.
  */
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
@@ -17,25 +18,58 @@ const plugin = JSON.parse(readFileSync(join(root, ".cursor-plugin/plugin.json"),
 const server = mcp.mcpServers?.["steam-web"];
 assert.ok(server, "steam-web server missing from mcp.json");
 
-assert.equal(server.command, "${NODE}");
+assert.equal(server.command, "node");
 assert.notEqual(server.command, "/bin/sh");
-assert.notEqual(server.command, "node");
+assert.notEqual(server.command, "${NODE}");
 assert.notEqual(server.command, "node.exe");
 assert.notEqual(server.command, "cmd.exe");
 assert.notEqual(server.command, "./scripts/run-mcp");
 assert.doesNotMatch(server.command, /linuxbrew|Program Files/i);
-assert.deepEqual(server.args, ["./server.mjs"]);
+// Confirmed in Cursor logs: plugin variables in `command` are not interpolated
+// (`spawn ${NODE} ENOENT`). Placeholders belong in args / env / cwd only.
+assert.doesNotMatch(server.command, /\$\{/);
+assert.deepEqual(server.args, ["${PLUGIN_ROOT}/server.mjs"]);
 assert.equal(server.cwd, "${PLUGIN_ROOT}");
 assert.equal(server.env?.STEAM_WEB_API_KEY, "${STEAM_WEB_API_KEY}");
 assert.equal(server.env?.STEAM_ID, "${STEAM_ID}");
-assert.equal(server.env?.PATH, undefined);
 
-const nodeVar = plugin.variables?.properties?.NODE;
-assert.equal(nodeVar?.type, "string");
-assert.equal(nodeVar?.title, "Node.js binary");
-assert.match(nodeVar?.description ?? "", /Absolute path to Node 18\+/);
-assert.match(nodeVar?.description ?? "", /AppImage/);
-assert.ok(plugin.variables.required.includes("NODE"));
+const pathTemplate = server.env?.PATH;
+assert.equal(typeof pathTemplate, "string");
+assert.match(pathTemplate, /\$\{PATH\}/);
+assert.ok(pathTemplate.endsWith("${PATH}"), "PATH template must append ${PATH}, not replace it");
+assert.match(pathTemplate, /\/home\/linuxbrew\/\.linuxbrew\/bin/);
+assert.match(pathTemplate, /\$\{HOME\}\/\.linuxbrew\/bin/);
+assert.match(pathTemplate, /\/opt\/homebrew\/bin/);
+assert.match(pathTemplate, /\/usr\/local\/bin/);
+assert.match(pathTemplate, /\$\{NVM_BIN\}/);
+assert.match(pathTemplate, /\$\{HOME\}\/\.nvm\/current\/bin/);
+assert.match(pathTemplate, /fnm\/aliases\/default\/bin/);
+assert.match(pathTemplate, /\$\{FNM_MULTISHELL_PATH\}/);
+assert.doesNotMatch(pathTemplate, /windowsworst|Users\\[^\\]+\\AppData|dummy/i);
+assert.doesNotMatch(pathTemplate, /\/home\/(?!linuxbrew\b)[^/:]+\//);
+
+const unixDirs = pathTemplate
+  .replaceAll("${PATH}", "")
+  .split(":")
+  .map((d) => d.trim())
+  .filter(Boolean);
+for (const dir of [
+  "/home/linuxbrew/.linuxbrew/bin",
+  "${HOME}/.linuxbrew/bin",
+  "/opt/homebrew/bin",
+  "/usr/local/bin",
+  "${NVM_BIN}",
+  "${HOME}/.nvm/current/bin",
+  "${HOME}/.local/share/fnm/aliases/default/bin",
+  "${HOME}/.fnm/aliases/default/bin",
+  "${XDG_DATA_HOME}/fnm/aliases/default/bin",
+  "${FNM_MULTISHELL_PATH}",
+]) {
+  assert.ok(unixDirs.includes(dir), `PATH split must keep standalone ${dir}`);
+}
+
+assert.equal(plugin.variables?.properties?.NODE, undefined);
+assert.ok(!plugin.variables.required.includes("NODE"));
 assert.ok(plugin.variables.required.includes("STEAM_WEB_API_KEY"));
 
 const posix = join(root, "scripts/run-mcp");
@@ -45,7 +79,8 @@ assert.ok(statSync(posix).mode & 0o111, "scripts/run-mcp must be executable");
 const posixText = readFileSync(posix, "utf8");
 assert.ok(posixText.startsWith("#!/bin/sh"));
 assert.match(posixText, /Optional terminal helper/);
-assert.match(posixText, /\$\{NODE\}/);
+assert.match(posixText, /\$\{PLUGIN_ROOT\}\/server\.mjs/);
+assert.doesNotMatch(posixText, /\$\{NODE\}/);
 assert.match(posixText, /command -v node/);
 assert.match(posixText, /spawn node ENOENT/);
 assert.match(posixText, /not a Steam API failure/);
@@ -57,6 +92,15 @@ assert.match(cmdText, /C:\\Program Files\\nodejs\\node\.exe/);
 assert.match(cmdText, /spawn node ENOENT/);
 assert.doesNotMatch(posixText, /windowsworst|dummy/i);
 assert.doesNotMatch(cmdText, /windowsworst|dummy/i);
+
+function interpolatePath(template) {
+  return template
+    .replaceAll("${HOME}", process.env.HOME || "")
+    .replaceAll("${NVM_BIN}", process.env.NVM_BIN || "")
+    .replaceAll("${XDG_DATA_HOME}", process.env.XDG_DATA_HOME || "")
+    .replaceAll("${FNM_MULTISHELL_PATH}", process.env.FNM_MULTISHELL_PATH || "")
+    .replaceAll("${PATH}", process.env.PATH || "");
+}
 
 function frame(obj) {
   const json = JSON.stringify(obj);
@@ -132,14 +176,35 @@ function spawnMcp(command, args, env, { expectFail = false, cwd = root } = {}) {
   });
 }
 
+function runNode(args, env) {
+  return new Promise((resolve, reject) => {
+    const child = spawn("node", args, {
+      cwd: root,
+      env,
+      stdio: "ignore",
+    });
+    child.on("error", reject);
+    child.on("exit", (code) => {
+      if (code === 0) resolve();
+      else reject(new Error(`node ${args.join(" ")} exited ${code}`));
+    });
+  });
+}
+
+const pathValue = interpolatePath(pathTemplate);
+const pathEnv = { ...process.env, PATH: pathValue };
+
+await runNode(["-e", "process.exit(0)"], pathEnv);
+await runNode(["--check", "server.mjs"], pathEnv);
+
 const prevCwd = process.cwd();
 process.chdir("/tmp");
 try {
-  const baseEnv = { ...process.env };
-  // Cursor spawn shape after ${NODE} substitution: absolute node + ./server.mjs + cwd plugin root.
-  await spawnMcp(process.execPath, ["./server.mjs"], baseEnv, { cwd: root });
+  const baseEnv = { ...process.env, PATH: pathValue };
+  // Cursor spawn shape after interpolation: node + absolute server.mjs + cwd plugin root.
+  await spawnMcp("node", [join(root, "server.mjs")], baseEnv, { cwd: root });
   // Optional terminal helper (not the Cursor spawn command).
-  await spawnMcp("/bin/sh", ["./scripts/run-mcp"], baseEnv, { cwd: root });
+  await spawnMcp("/bin/sh", ["./scripts/run-mcp"], { ...process.env }, { cwd: root });
 } finally {
   process.chdir(prevCwd);
 }

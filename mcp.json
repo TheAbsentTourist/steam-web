@@ -3,12 +3,13 @@
   "mcpServers": {
     "steam-web": {
       "type": "stdio",
-      "command": "${NODE}",
-      "args": ["./server.mjs"],
+      "command": "node",
+      "args": ["${PLUGIN_ROOT}/server.mjs"],
       "cwd": "${PLUGIN_ROOT}",
       "env": {
         "STEAM_WEB_API_KEY": "${STEAM_WEB_API_KEY}",
-        "STEAM_ID": "${STEAM_ID}"
+        "STEAM_ID": "${STEAM_ID}",
+        "PATH": "/home/linuxbrew/.linuxbrew/bin:${HOME}/.linuxbrew/bin:/opt/homebrew/bin:/usr/local/bin:${NVM_BIN}:${HOME}/.nvm/current/bin:${HOME}/.local/share/fnm/aliases/default/bin:${HOME}/.fnm/aliases/default/bin:${XDG_DATA_HOME}/fnm/aliases/default/bin:${FNM_MULTISHELL_PATH}:${PATH}"
       }
     }
   }

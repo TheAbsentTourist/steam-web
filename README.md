@@ -8,7 +8,7 @@ MIT. Author [TheAbsentTourist](https://github.com/TheAbsentTourist), chucktastic
 
 ## Requirements
 
-- Node.js 18+ on the machine, plus its **absolute** path under **Plugins → Configure** (`NODE`)
+- Node.js 18+ on the machine (Linuxbrew / Homebrew / nvm / fnm / official installer — not only inside a toolbox)
 - A **user** Steam Web API key for keyed tools
 
 Get a key at [https://steamcommunity.com/dev/apikey](https://steamcommunity.com/dev/apikey) (sign in with Steam). Valve caps usage at 100,000 calls per day.
@@ -51,9 +51,11 @@ loadUserLocalPlugin steam-web rejected: symlink target ... is outside ~/.cursor/
 
 That is a Cursor local-plugin limitation, not a steam-web defect. If you already symlinked, remove the symlink and clone or copy into the folder instead.
 
-Then **Developer: Reload Window**. **Customize** should show Steam Web (plugin) and steam-web (MCP/skill). Set **Node.js binary** (`NODE`), `STEAM_WEB_API_KEY`, and optional `STEAM_ID` under **Plugins → Configure** (API key / SteamID can also come from the host environment / `$PLUGIN_DATA/config.json`).
+Then **Developer: Reload Window**. **Customize** should show Steam Web (plugin) and steam-web (MCP/skill). Set `STEAM_WEB_API_KEY` and optional `STEAM_ID` under **Plugins → Configure** (or the host environment / `$PLUGIN_DATA/config.json`).
 
-On Cursor Linux AppImage, `/bin` is overlaid: the host `/bin/sh` and a PATH `node` are both invisible. `spawn /bin/sh ENOENT` and `spawn node ENOENT` are the same class of bug. Relative `./scripts/run-mcp` also ENOENT because cwd is not applied to `command`. Configure `NODE` to an absolute path the AppImage can spawn (example: `/home/linuxbrew/.linuxbrew/bin/node`). Find it in a normal terminal with `command -v node` (Windows: `where node`). `scripts/run-mcp` is only a terminal helper, not the Cursor spawn command.
+Cursor spawn is `node` with `${PLUGIN_ROOT}/server.mjs` (absolute via plugin interpolation in **args**). It does **not** use `/bin/sh`, `./scripts/run-mcp`, or `${NODE}` as `command` — AppImage returns `spawn /bin/sh ENOENT`, and Cursor does not interpolate plugin variables in `command` (`spawn ${NODE} ENOENT`). `mcp.json` prepends well-known Node dirs (Linuxbrew, Homebrew, nvm/fnm) onto `PATH` without replacing it. `scripts/run-mcp` is only a terminal helper, not the Cursor spawn command.
+
+If logs show `spawn node ENOENT`, Node 18+ is not in those dirs or the PATH Cursor inherits. Install Node on the machine, then fully quit and reopen Cursor.
 
 On Teams/Enterprise, local plugin imports may be disabled by admin policy.
 
@@ -116,11 +118,7 @@ Private or hidden profiles, including a private friend list (HTTP 401/403), retu
 
 ## Configure (Cursor)
 
-Open **Plugins → Configure** and set:
-
-- **Node.js binary** (`NODE`, required): absolute path to Node 18+. Needed on Cursor Linux AppImage, which cannot see host PATH or `/bin/sh`. Example: `/home/linuxbrew/.linuxbrew/bin/node` or `C:\Program Files\nodejs\node.exe`
-- `STEAM_WEB_API_KEY` (required for keyed tools)
-- optional `STEAM_ID` (default SteamID64)
+On a catalog/Marketplace install, open **Plugins → Configure** and set `STEAM_WEB_API_KEY` (required for keyed tools) and optional `STEAM_ID` (default SteamID64).
 
 ## Contact and support
 
