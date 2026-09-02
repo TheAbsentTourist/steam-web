@@ -13,7 +13,11 @@ MIT. Author [TheAbsentTourist](https://github.com/TheAbsentTourist), chucktastic
 
 Get a key at [https://steamcommunity.com/dev/apikey](https://steamcommunity.com/dev/apikey) (sign in with Steam). Valve caps usage at 100,000 calls per day.
 
-**Windows Cursor.** Install Node 18+ from the [official installer](https://nodejs.org) so `node` is on the PATH Cursor inherits. Fully quit Cursor after install (a window reload is not enough if Cursor started before Node was on PATH).
+**Windows Cursor.** Success is `mcp.json` spawning bare `node` plus `./server.mjs` with `cwd` `${PLUGIN_ROOT}`. A default Node.js install at `C:\Program Files\nodejs` works because `command` is `node` (the PATH Cursor inherits), not a linux binary.
+
+1. Install Node 18+ from the [official Windows installer](https://nodejs.org) (adds `C:\Program Files\nodejs` to PATH).
+2. In **cmd.exe**, run `where node`. You should see `C:\Program Files\nodejs\node.exe`.
+3. **Fully quit Cursor** (not Reload Window), then reopen so it inherits the new PATH.
 
 **Linux Cursor AppImage / Flatpak.** stdio MCP is **not supported**. Cursor spawn returns ENOENT even for an existing host binary (`node`, `/usr/bin/node`, `/bin/sh`). A bundled linux executable does not fix spawn and cannot run on Windows. This is an issue on Cursor's side and not ours.
 
@@ -57,7 +61,7 @@ That is a Cursor local-plugin limitation, not a steam-web defect. If you already
 
 Then **Developer: Reload Window**. **Customize** should show Steam Web (plugin) and steam-web (MCP/skill). Set `STEAM_WEB_API_KEY` and optional `STEAM_ID` under **Plugins → Configure** (or the host environment / `$PLUGIN_DATA/config.json`).
 
-`mcp.json` spawn is bare `node` plus the script (Windows Cursor local plugin uses this; Grok Bot already runs the same `server.mjs` without `mcp.json`):
+Windows Cursor local plugin spawn (`mcp.json`):
 
 ```json
 "command": "node",
@@ -65,7 +69,7 @@ Then **Developer: Reload Window**. **Customize** should show Steam Web (plugin) 
 "cwd": "${PLUGIN_ROOT}"
 ```
 
-`server.mjs` is the MCP. Linux Cursor AppImage / Flatpak stdio MCP is **not supported** (see Requirements).
+`server.mjs` is the MCP. Confirm `where node` in cmd.exe, then fully quit Cursor (see Requirements). Grok Bot already runs the same `server.mjs` without `mcp.json`.
 
 On Teams/Enterprise, local plugin imports may be disabled by admin policy.
 
