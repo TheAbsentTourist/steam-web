@@ -1,6 +1,7 @@
 #!/usr/bin/env node
 /**
  * Live MCP smoke: initialize, tools/list, steam_get_news appid 440.
+ * Spawns the bundled bin/steam-web-mcp (Cursor AppImage spawn path), not node.
  * Asserts a title that also appears on api.steampowered.com. Does not fake data.
  */
 import { spawn } from "node:child_process";
@@ -73,7 +74,8 @@ if (liveTitles.length === 0) {
   process.exit(1);
 }
 
-const child = spawn("node", ["./server.mjs"], { cwd: root, stdio: ["pipe", "pipe", "inherit"] });
+const bundled = join(root, "bin/steam-web-mcp");
+const child = spawn(bundled, [], { cwd: root, stdio: ["pipe", "pipe", "inherit"] });
 const repliesP = readMessages(child, 3);
 
 child.stdin.write(

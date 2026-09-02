@@ -1,7 +1,14 @@
 @echo off
-REM Optional terminal helper. Cursor spawn uses ${NODE} + ./server.mjs, not this file.
+REM Optional terminal helper. Cursor spawn uses ${PLUGIN_ROOT}/bin/steam-web-mcp (Linux).
+REM On Windows, this helper prefers bin\steam-web-mcp.exe when present.
 setlocal EnableExtensions
+set "BUNDLED=%~dp0..\bin\steam-web-mcp.exe"
 set "SERVER=%~dp0..\server.mjs"
+
+if exist "%BUNDLED%" (
+  "%BUNDLED%" %*
+  exit /b %ERRORLEVEL%
+)
 
 where node >nul 2>&1
 if not errorlevel 1 (
@@ -29,5 +36,5 @@ if defined NVM_HOME (
   )
 )
 
-echo steam-web: spawn node ENOENT - Node.js 18+ was not found (not a Steam API failure). Install Node on the machine (official installer), then fully quit and reopen Cursor. 1>&2
+echo steam-web: spawn node ENOENT - Node.js 18+ was not found (not a Steam API failure). Linux Cursor uses bin/steam-web-mcp; for this helper install Node on the machine, then fully quit and reopen Cursor. 1>&2
 exit /b 1

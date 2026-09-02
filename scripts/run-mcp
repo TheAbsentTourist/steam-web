@@ -1,5 +1,6 @@
 #!/bin/sh
-# Optional terminal helper. Cursor spawn uses ${NODE} + ./server.mjs, not this file.
+# Optional terminal helper. Cursor spawn uses ${PLUGIN_ROOT}/bin/steam-web-mcp,
+# not this file. Prefer the bundled binary so host Node is not required.
 # Builtins only for path math so a Flatpak PATH without coreutils still works.
 case $0 in
   */*) dir=${0%/*} ;;
@@ -7,6 +8,11 @@ case $0 in
 esac
 root=$(CDPATH= cd -- "$dir/.." && pwd) || exit 1
 server="$root/server.mjs"
+bundled="$root/bin/steam-web-mcp"
+
+if [ -f "$bundled" ] && [ -x "$bundled" ]; then
+  exec "$bundled" "$@"
+fi
 
 if [ ! -f "$server" ]; then
   printf '%s\n' "steam-web: missing $server" >&2
@@ -78,5 +84,5 @@ try_node "$_fnm" "$@"
 try_node "${HOME-}/.volta/bin/node" "$@"
 try_node "${VOLTA_HOME-}/bin/node" "$@"
 
-printf '%s\n' "steam-web: spawn node ENOENT — Node.js 18+ was not found (not a Steam API failure). Install Node on the machine (brew / rpm-ostree / official installer), not only inside a toolbox, then fully quit and reopen Cursor." >&2
+printf '%s\n' "steam-web: spawn node ENOENT — Node.js 18+ was not found (not a Steam API failure). Clone includes bin/steam-web-mcp for Cursor; for this helper install Node on the machine, then fully quit and reopen Cursor." >&2
 exit 1
