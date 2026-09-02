@@ -13,34 +13,43 @@ MIT. Author [TheAbsentTourist](https://github.com/TheAbsentTourist), chucktastic
 
 Get a key at [https://steamcommunity.com/dev/apikey](https://steamcommunity.com/dev/apikey) (sign in with Steam). Valve caps usage at 100,000 calls per day.
 
-**Windows Cursor.** Cursor currently does **not** expand `${PLUGIN_ROOT}` in plugin MCP **args**. Shipping `"${PLUGIN_ROOT}\\scripts\\run-mcp.cmd"` as an args token leaves the placeholder literal, so cmd.exe reports `The system cannot find the path specified.` Expanding that token to the real plugin directory starts MCP. Cursor also resolves a plugin-relative `./scripts/run-mcp.cmd` **command** against the Cursor install directory (for example `%LOCALAPPDATA%\Programs\cursor\scripts\run-mcp.cmd`), not the plugin root — same path-specified error. `cmd /d /s /c ./scripts/run-mcp.cmd` also fails because `./` is parsed badly.
+**Windows Cursor plugin MCP spawn is currently broken** for portable configs. Cursor's Windows plugin MCP host does not match the Agent Plugins spec. The MCP server code is fine.
 
-Default `mcp.json` therefore uses a portable spawn that does **not** require placeholder expansion: bare `cmd.exe` (not `cmd`) and a plugin-relative args token:
+Public `mcp.json` keeps a portable, spec-shaped spawn (the same idea Grok Bot already uses). No `cwd`. No `cmd.exe`. No `./scripts/run-mcp.cmd` as `command`. No `${PLUGIN_ROOT}` in `command` or args. No machine-absolute paths:
 
 ```json
-"command": "cmd.exe",
-"args": ["/d", "/c", "call", "scripts\\run-mcp.cmd"]
+"command": "node",
+"args": ["./server.mjs"]
 ```
 
-No `cwd` field. Relies on the Agent Plugins default: cwd = plugin root. Relative `scripts\run-mcp.cmd` works only if cwd is the plugin root. If cwd is the Cursor app dir, it produces the same path-specified error — that is a Cursor bug, not a missing script.
+That portable config does **not** start MCP in today's Windows Cursor plugin host. Proven on a maintainer machine:
 
-File these upstream:
+1. `${PLUGIN_ROOT}\scripts\run-mcp.cmd` unexpanded → `The system cannot find the path specified.`
+2. Relative `scripts\run-mcp.cmd` with Cursor's actual cwd → same error (cwd is **not** the plugin root; it matches Cursor app-dir behavior).
+3. Absolute `C:\Program Files\nodejs\node.exe` + absolute `…\steam-web\server.mjs` works even with `cwd=C:\`.
+4. Bare `node` → `spawn node ENOENT` (plugin spawn PATH has no `node`).
+5. `./scripts/run-mcp.cmd` as `command` → wrong resolution / `cmd` `./` parsing issues (resolved against the Cursor install dir, e.g. `%LOCALAPPDATA%\Programs\cursor\scripts\run-mcp.cmd`).
 
-- a) `${PLUGIN_ROOT}` / `${PLUGIN_DATA}` are not expanded in plugin MCP args
-- b) plugin-relative `./` command is resolved against the wrong base (Cursor install dir)
-- c) confirm default cwd for plugin MCP is the plugin root on Windows
+**Local workaround (NOT in the public `mcp.json`).** Until Cursor fixes plugin spawn, add a user MCP in `~/.cursor/mcp.json` (Windows: `%USERPROFILE%\.cursor\mcp.json`) with absolute `node.exe` and an absolute path to the installed plugin `server.mjs`:
 
-Do not set `"cwd": "${PLUGIN_ROOT}"`. Node `child_process` reports `spawn C:\WINDOWS\system32\cmd.exe ENOENT` for that exact System32 path when `cwd` is invalid — `cmd.exe` is present; the working directory is not. Do **not** put `${PLUGIN_ROOT}` in `command` or args until Cursor expands it. Do not use `./scripts/run-mcp.cmd` as `command`. Env placeholders for `STEAM_WEB_API_KEY` / `STEAM_ID` stay (those already work).
+```json
+{
+  "mcpServers": {
+    "steam-web": {
+      "command": "C:\\Program Files\\nodejs\\node.exe",
+      "args": ["C:\\Users\\YOU\\.cursor\\plugins\\local\\steam-web\\server.mjs"]
+    }
+  }
+}
+```
 
-`scripts/run-mcp.cmd` still auto-finds `node.exe` when Cursor's spawn PATH does not include Node. Typical install: [official Windows installer](https://nodejs.org) → `%ProgramFiles%\nodejs\node.exe`. You can also set `STEAM_WEB_NODE` to the full path of `node.exe` for the launcher (env is expanded). After installing Node, **fully quit Cursor** (not Reload Window) and reopen.
+Replace those paths with your Node install and plugin directory. Typical Node: [official Windows installer](https://nodejs.org) → `%ProgramFiles%\nodejs\node.exe`. After installing Node, **fully quit Cursor** (not Reload Window) and reopen. Do **not** commit machine-absolute paths to this repo. A bundled linux executable is not used.
 
-If bare `cmd.exe` is missing from spawn PATH on some hosts, a local override is `"command": "node"` with `"args": ["./server.mjs"]` **only if** `node` itself resolves. That is not the default. A bundled linux executable is not used, and `C:\Program Files\nodejs\node.exe` is not hardcoded in `mcp.json`.
-
-If omitting `cwd` still yields `spawn …\cmd.exe ENOENT`, that is a Cursor MCP host bug (cannot spawn host executables, or plugin root is unusable as cwd). File it upstream.
-
-**macOS / Linux Cursor.** Until clients support platform-specific command maps, `cmd.exe` will not run. Temporary local override: `"command": "node"` with `"args": ["./server.mjs"]` if bare `node` is on PATH.
+`scripts/run-mcp.cmd` and `scripts/find-node.cmd` are optional terminal helpers only. They are **not** the Cursor `mcp.json` entry until Cursor is fixed.
 
 **Grok Bot** runs `server.mjs` directly and does not use `mcp.json`. Unchanged.
+
+**macOS / Linux Cursor (AppImage / Flatpak).** stdio MCP is **not supported**. Prior tests returned `ENOENT` even for existing host binaries (`node`, `/usr/bin/node`, `/bin/sh`).
 
 ## Credentials
 
@@ -82,14 +91,7 @@ That is a Cursor local-plugin limitation, not a steam-web defect. If you already
 
 Then **Developer: Reload Window**. **Customize** should show Steam Web (plugin) and steam-web (MCP/skill). Set `STEAM_WEB_API_KEY` and optional `STEAM_ID` under **Plugins → Configure** (or the host environment / `$PLUGIN_DATA/config.json`).
 
-Windows Cursor local plugin spawn (`mcp.json`):
-
-```json
-"command": "cmd.exe",
-"args": ["/d", "/c", "call", "scripts\\run-mcp.cmd"]
-```
-
-No `cwd` field (spec default = plugin root). Do not put `${PLUGIN_ROOT}` in args until Cursor expands it. Do not use `"./scripts/run-mcp.cmd"` as `command` (Cursor resolves `./` against the Cursor install dir). If relative `scripts\run-mcp.cmd` still fails with path specified, Cursor cwd is not the plugin root. `scripts/run-mcp.cmd` locates `node.exe` (PATH, Program Files, nvm/volta/scoop/fnm, or `STEAM_WEB_NODE`) and runs `server.mjs`. Grok Bot already runs the same `server.mjs` without `mcp.json`.
+Public plugin spawn (`mcp.json`) is spec-shaped `node` + `./server.mjs` (no `cwd`). Windows Cursor's plugin MCP host currently cannot run that portable config — see Requirements for evidence and the user-MCP absolute-path workaround. Grok Bot already runs the same `server.mjs` without `mcp.json`.
 
 On Teams/Enterprise, local plugin imports may be disabled by admin policy.
 

@@ -1,5 +1,6 @@
 @echo off
-REM Resolve node.exe for steam-web. Errors go to stderr only (MCP stdio).
+REM Optional helper: resolve node.exe for scripts\run-mcp.cmd.
+REM NOT the Cursor mcp.json spawn path. Errors go to stderr only.
 REM No setlocal/endlocal: `call find-node.cmd` must leave NODE set in the caller.
 
 set "NODE="
