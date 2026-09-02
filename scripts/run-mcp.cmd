@@ -1,6 +1,6 @@
 @echo off
 setlocal EnableExtensions
-REM Cursor spawn (Windows-first): mcp.json command ./scripts/run-mcp.cmd
+REM Cursor spawn (Windows-first): mcp.json command cmd.exe, args /d /c call ${PLUGIN_ROOT}\scripts\run-mcp.cmd
 REM Do not write to stdout — MCP uses stdio. Errors to stderr only.
 call "%~dp0find-node.cmd"
 if errorlevel 1 exit /b 1
