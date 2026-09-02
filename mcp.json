@@ -4,12 +4,7 @@
     "steam-web": {
       "type": "stdio",
       "command": "cmd.exe",
-      "args": [
-        "/d",
-        "/c",
-        "call",
-        "${PLUGIN_ROOT}\\scripts\\run-mcp.cmd"
-      ],
+      "args": ["/d", "/c", "call", "scripts\\run-mcp.cmd"],
       "env": {
         "STEAM_WEB_API_KEY": "${STEAM_WEB_API_KEY}",
         "STEAM_ID": "${STEAM_ID}"
