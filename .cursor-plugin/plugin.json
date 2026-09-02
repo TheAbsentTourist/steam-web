@@ -18,6 +18,11 @@
   "variables": {
     "type": "object",
     "properties": {
+      "NODE": {
+        "type": "string",
+        "title": "Node.js binary",
+        "description": "Absolute path to Node 18+ (Cursor AppImage cannot see PATH or /bin/sh). Example: /home/linuxbrew/.linuxbrew/bin/node or C:\\Program Files\\nodejs\\node.exe"
+      },
       "STEAM_WEB_API_KEY": {
         "type": "string",
         "title": "Steam Web API key",
@@ -30,6 +35,7 @@
       }
     },
     "required": [
+      "NODE",
       "STEAM_WEB_API_KEY"
     ]
   },

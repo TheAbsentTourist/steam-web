@@ -1,9 +1,9 @@
 #!/usr/bin/env node
 /**
  * Offline mcp.json launcher checks. No Steam, no secrets.
- * Proves Cursor spawn() uses /bin/sh with ./scripts/run-mcp (not a relative
- * command, not bare `node`) so Linux AppImage does not ENOENT, and that the
- * posix launcher finds Node even when PATH has none.
+ * Proves Cursor spawn() uses ${NODE} with ./server.mjs (not /bin/sh, not
+ * bare `node`, not ./scripts/run-mcp). scripts/run-mcp remains an optional
+ * terminal helper only.
  */
 import assert from "node:assert/strict";
 import { spawn } from "node:child_process";
@@ -13,19 +13,30 @@ import { fileURLToPath } from "node:url";
 
 const root = join(dirname(fileURLToPath(import.meta.url)), "..");
 const mcp = JSON.parse(readFileSync(join(root, "mcp.json"), "utf8"));
+const plugin = JSON.parse(readFileSync(join(root, ".cursor-plugin/plugin.json"), "utf8"));
 const server = mcp.mcpServers?.["steam-web"];
 assert.ok(server, "steam-web server missing from mcp.json");
 
-assert.equal(server.command, "/bin/sh");
-assert.notEqual(server.command, "./scripts/run-mcp");
+assert.equal(server.command, "${NODE}");
+assert.notEqual(server.command, "/bin/sh");
 assert.notEqual(server.command, "node");
-assert.notEqual(server.command, "cmd.exe");
 assert.notEqual(server.command, "node.exe");
-assert.deepEqual(server.args, ["./scripts/run-mcp"]);
+assert.notEqual(server.command, "cmd.exe");
+assert.notEqual(server.command, "./scripts/run-mcp");
+assert.doesNotMatch(server.command, /linuxbrew|Program Files/i);
+assert.deepEqual(server.args, ["./server.mjs"]);
 assert.equal(server.cwd, "${PLUGIN_ROOT}");
 assert.equal(server.env?.STEAM_WEB_API_KEY, "${STEAM_WEB_API_KEY}");
 assert.equal(server.env?.STEAM_ID, "${STEAM_ID}");
 assert.equal(server.env?.PATH, undefined);
+
+const nodeVar = plugin.variables?.properties?.NODE;
+assert.equal(nodeVar?.type, "string");
+assert.equal(nodeVar?.title, "Node.js binary");
+assert.match(nodeVar?.description ?? "", /Absolute path to Node 18\+/);
+assert.match(nodeVar?.description ?? "", /AppImage/);
+assert.ok(plugin.variables.required.includes("NODE"));
+assert.ok(plugin.variables.required.includes("STEAM_WEB_API_KEY"));
 
 const posix = join(root, "scripts/run-mcp");
 const win = join(root, "scripts/run-mcp.cmd");
@@ -33,20 +44,16 @@ accessSync(posix, constants.X_OK);
 assert.ok(statSync(posix).mode & 0o111, "scripts/run-mcp must be executable");
 const posixText = readFileSync(posix, "utf8");
 assert.ok(posixText.startsWith("#!/bin/sh"));
+assert.match(posixText, /Optional terminal helper/);
+assert.match(posixText, /\$\{NODE\}/);
 assert.match(posixText, /command -v node/);
-assert.match(posixText, /\/usr\/bin\/node/);
-assert.match(posixText, /linuxbrew/);
-assert.match(posixText, /\/var\/home\/\*\//);
-assert.match(posixText, /\.nvm\/versions\/node/);
-assert.match(posixText, /fnm/);
-assert.match(posixText, /volta/);
 assert.match(posixText, /spawn node ENOENT/);
 assert.match(posixText, /not a Steam API failure/);
 
 const cmdText = readFileSync(win, "utf8");
+assert.match(cmdText, /Optional terminal helper/);
 assert.match(cmdText, /where node/i);
 assert.match(cmdText, /C:\\Program Files\\nodejs\\node\.exe/);
-assert.match(cmdText, /NVM_HOME|nvm/);
 assert.match(cmdText, /spawn node ENOENT/);
 assert.doesNotMatch(posixText, /windowsworst|dummy/i);
 assert.doesNotMatch(cmdText, /windowsworst|dummy/i);
@@ -57,10 +64,10 @@ function frame(obj) {
   return Buffer.concat([Buffer.from(`Content-Length: ${payload.length}\r\n\r\n`, "utf8"), payload]);
 }
 
-function spawnLauncher(env, { expectFail = false } = {}) {
+function spawnMcp(command, args, env, { expectFail = false, cwd = root } = {}) {
   return new Promise((resolve, reject) => {
-    const child = spawn("/bin/sh", ["./scripts/run-mcp"], {
-      cwd: root,
+    const child = spawn(command, args, {
+      cwd,
       env,
       stdio: ["pipe", "pipe", "pipe"],
     });
@@ -82,12 +89,12 @@ function spawnLauncher(env, { expectFail = false } = {}) {
     let buf = Buffer.alloc(0);
     const timer = setTimeout(() => {
       child.kill();
-      reject(new Error(`launcher MCP initialize timed out: ${stderr}`));
+      reject(new Error(`MCP initialize timed out: ${stderr}`));
     }, 10000);
     child.on("exit", (code) => {
       if (code && code !== null) {
         clearTimeout(timer);
-        reject(new Error(`launcher exited ${code}: ${stderr}`));
+        reject(new Error(`process exited ${code}: ${stderr}`));
       }
     });
     child.stdout.on("data", (chunk) => {
@@ -129,13 +136,16 @@ const prevCwd = process.cwd();
 process.chdir("/tmp");
 try {
   const baseEnv = { ...process.env };
-  await spawnLauncher(baseEnv);
+  // Cursor spawn shape after ${NODE} substitution: absolute node + ./server.mjs + cwd plugin root.
+  await spawnMcp(process.execPath, ["./server.mjs"], baseEnv, { cwd: root });
+  // Optional terminal helper (not the Cursor spawn command).
+  await spawnMcp("/bin/sh", ["./scripts/run-mcp"], baseEnv, { cwd: root });
 } finally {
   process.chdir(prevCwd);
 }
 
 const stripped = { ...process.env, PATH: "/usr/sbin:/sbin" };
-await spawnLauncher(stripped);
+await spawnMcp("/bin/sh", ["./scripts/run-mcp"], stripped);
 
 const missing = {
   ...process.env,
@@ -146,6 +156,6 @@ const missing = {
   FNM_MULTISHELL_PATH: "",
   VOLTA_HOME: "",
 };
-await spawnLauncher(missing, { expectFail: true });
+await spawnMcp("/bin/sh", ["./scripts/run-mcp"], missing, { expectFail: true });
 
 console.log("mcp-path-test: PASS");
