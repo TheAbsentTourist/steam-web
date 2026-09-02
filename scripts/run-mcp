@@ -1,88 +1,16 @@
 #!/bin/sh
-# Optional terminal helper. Cursor spawn uses ${PLUGIN_ROOT}/bin/steam-web-mcp,
-# not this file. Prefer the bundled binary so host Node is not required.
-# Builtins only for path math so a Flatpak PATH without coreutils still works.
+# Optional terminal helper. Cursor spawn is mcp.json: node ./server.mjs
+# (cwd ${PLUGIN_ROOT}). Grok Bot already runs node …/server.mjs.
 case $0 in
   */*) dir=${0%/*} ;;
   *) dir=. ;;
 esac
 root=$(CDPATH= cd -- "$dir/.." && pwd) || exit 1
 server="$root/server.mjs"
-bundled="$root/bin/steam-web-mcp"
-
-if [ -f "$bundled" ] && [ -x "$bundled" ]; then
-  exec "$bundled" "$@"
-fi
 
 if [ ! -f "$server" ]; then
   printf '%s\n' "steam-web: missing $server" >&2
   exit 1
 fi
 
-try_node() {
-  _bin=$1
-  shift
-  if [ -n "$_bin" ] && [ -f "$_bin" ] && [ -x "$_bin" ]; then
-    exec "$_bin" "$server" "$@"
-  fi
-}
-
-newest_node() {
-  _picked=$(
-    for _p in "$@"; do
-      if [ -f "$_p" ] && [ -x "$_p" ]; then
-        printf '%s\n' "$_p"
-      fi
-    done | sort -V 2>/dev/null | {
-      _last=
-      while IFS= read -r _line; do
-        _last=$_line
-      done
-      printf '%s' "$_last"
-    }
-  )
-  if [ -n "$_picked" ]; then
-    printf '%s\n' "$_picked"
-    return
-  fi
-  _last=
-  for _p in "$@"; do
-    if [ -f "$_p" ] && [ -x "$_p" ]; then
-      _last=$_p
-    fi
-  done
-  printf '%s\n' "$_last"
-}
-
-_cmd=$(command -v node 2>/dev/null) || _cmd=
-try_node "$_cmd" "$@"
-
-try_node /usr/bin/node "$@"
-try_node /usr/local/bin/node "$@"
-try_node /opt/homebrew/bin/node "$@"
-try_node "${HOME-}/.linuxbrew/bin/node" "$@"
-try_node /home/linuxbrew/.linuxbrew/bin/node "$@"
-
-for _p in /var/home/*/.linuxbrew/bin/node /home/*/.linuxbrew/bin/node; do
-  try_node "$_p" "$@"
-done
-
-_nvm=$(newest_node \
-  "${HOME-}/.nvm/versions/node/"*/bin/node \
-  "${NVM_DIR-}/versions/node/"*/bin/node)
-try_node "$_nvm" "$@"
-
-try_node "${HOME-}/.local/share/fnm/aliases/default/bin/node" "$@"
-try_node "${XDG_DATA_HOME-}/fnm/aliases/default/bin/node" "$@"
-try_node "${HOME-}/.fnm/aliases/default/bin/node" "$@"
-try_node "${FNM_MULTISHELL_PATH-}/node" "$@"
-_fnm=$(newest_node \
-  "${HOME-}/.local/share/fnm/node-versions/"*/installation/bin/node \
-  "${XDG_DATA_HOME-}/fnm/node-versions/"*/installation/bin/node)
-try_node "$_fnm" "$@"
-
-try_node "${HOME-}/.volta/bin/node" "$@"
-try_node "${VOLTA_HOME-}/bin/node" "$@"
-
-printf '%s\n' "steam-web: spawn node ENOENT — Node.js 18+ was not found (not a Steam API failure). Clone includes bin/steam-web-mcp for Cursor; for this helper install Node on the machine, then fully quit and reopen Cursor." >&2
-exit 1
+exec node "$server" "$@"

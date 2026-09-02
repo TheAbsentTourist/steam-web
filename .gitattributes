@@ -1,3 +1,0 @@
-# Bundled linux-x64 MCP executable (bun --compile of server.mjs).
-# Do not treat as text; do not apply LFS (clone-just-works without git-lfs).
-bin/steam-web-mcp binary linguist-generated

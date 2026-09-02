@@ -8,10 +8,16 @@ MIT. Author [TheAbsentTourist](https://github.com/TheAbsentTourist), chucktastic
 
 ## Requirements
 
+- Node.js 18+ on the machine that launches the MCP
 - A **user** Steam Web API key for keyed tools
-- Cursor Linux AppImage / Bazzite: **no host Node**. The plugin ships `bin/steam-web-mcp` (linux x64). Cursor spawn cannot see host `node`, `/bin/sh`, or `/home/linuxbrew` (AppImage overlay; only `$HOME` is reliably visible). Plugin user variables such as `${NODE}` do **not** expand in `command`.
 
 Get a key at [https://steamcommunity.com/dev/apikey](https://steamcommunity.com/dev/apikey) (sign in with Steam). Valve caps usage at 100,000 calls per day.
+
+**Windows Cursor.** Install Node 18+ from the [official installer](https://nodejs.org) so `node` is on the PATH Cursor inherits. Fully quit Cursor after install (a window reload is not enough if Cursor started before Node was on PATH).
+
+**Grok Bot.** Unchanged. It already runs `node …/server.mjs` and does not use plugin `mcp.json` spawn.
+
+**Linux Cursor AppImage / Flatpak.** stdio MCP is **not supported**. Cursor spawn returns ENOENT even for an existing host binary (`node`, `/usr/bin/node`, `/bin/sh`). A bundled linux executable does not fix spawn and cannot run on Windows.
 
 ## Credentials
 
@@ -53,19 +59,15 @@ That is a Cursor local-plugin limitation, not a steam-web defect. If you already
 
 Then **Developer: Reload Window**. **Customize** should show Steam Web (plugin) and steam-web (MCP/skill). Set `STEAM_WEB_API_KEY` and optional `STEAM_ID` under **Plugins → Configure** (or the host environment / `$PLUGIN_DATA/config.json`).
 
-`mcp.json` spawn is the bundled executable (not `node`, not `/bin/sh`, not `./scripts/run-mcp`):
+`mcp.json` spawn is bare `node` plus the script (Windows Cursor local plugin uses this; Grok Bot already runs the same `server.mjs` without `mcp.json`):
 
 ```json
-"command": "${PLUGIN_ROOT}/bin/steam-web-mcp",
-"args": [],
+"command": "node",
+"args": ["./server.mjs"],
 "cwd": "${PLUGIN_ROOT}"
 ```
 
-`${PLUGIN_ROOT}` is a Cursor plugin-dir token. The AppImage can see files under `~/.cursor/plugins/local/steam-web`. `scripts/run-mcp` is only a terminal helper (it prefers `bin/steam-web-mcp` when present).
-
-**Windows.** `mcp.json` always names `bin/steam-web-mcp` (linux x64 / unix). Rebuild a Windows extra with `STEAM_WEB_MCP_CROSS=1 ./scripts/build-mcp` to get `bin/steam-web-mcp.exe`; use that from a terminal (`scripts/run-mcp.cmd`) or a local override. Do not rename the linux binary; Cursor Linux spawn depends on that exact filename.
-
-Rebuild the linux x64 binary (needs [bun](https://bun.sh)): `./scripts/build-mcp`. `server.mjs` is the source of truth. Other unix names (`bin/steam-web-mcp-linux-arm64`, `bin/steam-web-mcp-darwin-arm64`, `bin/steam-web-mcp-darwin-x64`) are optional extras from the same script; `mcp.json` cannot point at more than one command name.
+`server.mjs` is the MCP. Linux Cursor AppImage / Flatpak stdio MCP is **not supported** (see Requirements).
 
 On Teams/Enterprise, local plugin imports may be disabled by admin policy.
 
@@ -128,7 +130,7 @@ Private or hidden profiles, including a private friend list (HTTP 401/403), retu
 
 ## Configure (Cursor)
 
-On a catalog/Marketplace install, open **Plugins → Configure** and set `STEAM_WEB_API_KEY` (required for keyed tools) and optional `STEAM_ID` (default SteamID64). Host Node is not required: Cursor spawn uses `bin/steam-web-mcp`.
+On a catalog/Marketplace install, open **Plugins → Configure** and set `STEAM_WEB_API_KEY` (required for keyed tools) and optional `STEAM_ID` (default SteamID64).
 
 ## Contact and support
 

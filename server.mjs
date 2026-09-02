@@ -10,7 +10,7 @@ import { stdin, stdout } from "node:process";
 import { pathToFileURL } from "node:url";
 
 const PROTOCOL_VERSION = "2024-11-05";
-const SERVER_INFO = { name: "steam-web", version: "0.2.3" };
+const SERVER_INFO = { name: "steam-web", version: "0.2.4" };
 const API_HOST = "https://api.steampowered.com";
 const TIMEOUT_MS = 15_000;
 const KEY_HELP =
@@ -1736,9 +1736,6 @@ function pump() {
 
 function startedAsMain() {
   try {
-    // bun build --compile embeds the entry under $bunfs; argv[1] is the executable.
-    if (typeof Bun !== "undefined" && Bun.isStandaloneExecutable) return true;
-    if (import.meta.main === true) return true;
     return Boolean(process.argv[1]) && import.meta.url === pathToFileURL(process.argv[1]).href;
   } catch {
     return true;
