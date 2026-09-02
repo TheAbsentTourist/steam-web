@@ -13,7 +13,7 @@ import {
   SERVER_INFO,
 } from "../server.mjs";
 
-assert.equal(SERVER_INFO.version, "0.2.2");
+assert.equal(SERVER_INFO.version, "0.2.3");
 
 const vanityUrl = parseVanityInput("https://steamcommunity.com/id/ExampleUser/");
 assert.equal(vanityUrl.vanityurl, "ExampleUser");
@@ -142,6 +142,19 @@ globalThis.fetch = async (url, init = {}) => {
     return jsonResponse({
       response: { success: true, up_to_date: version === "123", required_version: 123 },
     });
+  }
+  if (path.includes("/ISteamUser/GetPlayerSummaries/")) {
+    const players = globalThis.__summaries ?? [{ steamid: "76561198000000000", personaname: "x" }];
+    return jsonResponse({ response: { players } });
+  }
+  if (path.includes("/ISteamApps/GetServersAtAddress/")) {
+    const addr = new URL(href).searchParams.get("addr") || "";
+    return jsonResponse({
+      response: { success: true, servers: addr ? [{ addr, appid: 440 }] : [] },
+    });
+  }
+  if (path.includes("/IGameServersService/GetServerList/") || path.includes("/GetServerList/")) {
+    throw new Error(`must not call GetServerList ${href}`);
   }
   if (path.includes("/ISteamUser/ResolveVanityURL/")) {
     return jsonResponse({ response: { success: 42, message: "No match" } });
@@ -302,6 +315,60 @@ function payloadOf(result) {
     calls.some((c) => c.href.includes("ResolveVanityURL")),
     false,
     "must not call ResolveVanityURL for /profiles/",
+  );
+}
+
+{
+  globalThis.__summaries = [{ steamid: "76561198000000000", personaname: "offline" }];
+  const before = calls.length;
+  const r = await callTool("steam_get_servers_at_address", {});
+  assert.equal(r.isError, true);
+  assert.equal(r.payload.error, "invalid_arguments");
+  assert.match(r.payload.message, /gameserverip/i);
+  assert.equal(
+    calls.slice(before).some((c) => c.href.includes("GetServersAtAddress") || c.href.includes("GetServerList") || c.href.includes("127.0.0.1")),
+    false,
+    "missing gameserverip must not call GetServersAtAddress, GetServerList, or invent 127.0.0.1",
+  );
+  assert.equal(
+    calls.slice(before).some((c) => c.href.includes("GetPlayerSummaries")),
+    true,
+    "omit addr should gather via GetPlayerSummaries",
+  );
+}
+
+{
+  globalThis.__summaries = [
+    { steamid: "76561198000000000", gameserverip: "[203.0.113.50]:27015", gameextrainfo: "Team Fortress 2" },
+  ];
+  const before = calls.length;
+  const r = await callTool("steam_get_servers_at_address", {});
+  assert.equal(r.payload.success, true);
+  assert.equal(r.payload.servers[0].addr, "203.0.113.50:27015");
+  const slice = calls.slice(before);
+  assert.equal(
+    slice.some((c) => c.href.includes("GetPlayerSummaries")),
+    true,
+  );
+  const addrCall = slice.find((c) => c.href.includes("GetServersAtAddress"));
+  assert.ok(addrCall);
+  assert.match(addrCall.href, /203\.0\.113\.50/);
+  assert.equal(slice.some((c) => c.href.includes("GetServerList")), false);
+}
+
+{
+  const before = calls.length;
+  const r = await callTool("steam_get_servers_at_address", { addr: "198.51.100.8:27015" });
+  assert.equal(r.payload.success, true);
+  const slice = calls.slice(before);
+  assert.equal(
+    slice.some((c) => c.href.includes("GetPlayerSummaries")),
+    false,
+    "provided addr must not gather summaries",
+  );
+  assert.equal(
+    slice.some((c) => c.href.includes("GetServersAtAddress") && c.href.includes("198.51.100.8")),
+    true,
   );
 }
 
