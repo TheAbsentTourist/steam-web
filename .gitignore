@@ -5,7 +5,3 @@ node_modules
 *.pem
 credentials.json
 LOCAL-PROVE.md
-bin/steam-web-mcp-linux-arm64
-bin/steam-web-mcp-darwin-arm64
-bin/steam-web-mcp-darwin-x64
-bin/steam-web-mcp.exe

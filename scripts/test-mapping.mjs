@@ -16,7 +16,7 @@ function eq(actual, expected, label) {
   }
 }
 
-if (SERVER_INFO.version !== "0.2.3") {
+if (SERVER_INFO.version !== "0.2.4") {
   console.error("FAIL SERVER_INFO.version", SERVER_INFO);
   process.exit(1);
 }
