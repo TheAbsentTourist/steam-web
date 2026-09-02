@@ -15,9 +15,7 @@ Get a key at [https://steamcommunity.com/dev/apikey](https://steamcommunity.com/
 
 **Windows Cursor.** Install Node 18+ from the [official installer](https://nodejs.org) so `node` is on the PATH Cursor inherits. Fully quit Cursor after install (a window reload is not enough if Cursor started before Node was on PATH).
 
-**Grok Bot.** Unchanged. It already runs `node …/server.mjs` and does not use plugin `mcp.json` spawn.
-
-**Linux Cursor AppImage / Flatpak.** stdio MCP is **not supported**. Cursor spawn returns ENOENT even for an existing host binary (`node`, `/usr/bin/node`, `/bin/sh`). A bundled linux executable does not fix spawn and cannot run on Windows.
+**Linux Cursor AppImage / Flatpak.** stdio MCP is **not supported**. Cursor spawn returns ENOENT even for an existing host binary (`node`, `/usr/bin/node`, `/bin/sh`). A bundled linux executable does not fix spawn and cannot run on Windows. This is an issue on Cursor's side and not ours.
 
 ## Credentials
 
