@@ -2,7 +2,7 @@
 
 **0.2.9** — unofficial Steam Web API plugin for Cursor and other MCP hosts (including Grok Bot).
 
-Ask about libraries, playtime, achievements, friends, profiles, Workshop items, trades, **store prices**, **tags**, **followed games**, and **in-game item class metadata**. Live data from Valve’s official Web API (`https://api.steampowered.com`) plus keyless storefront details (`https://store.steampowered.com/api/appdetails`).
+Ask about libraries, playtime, achievements, friends, profiles, Workshop items, trades, store pages, tags, followed games, and in-game item class metadata. Live data from Valve’s official Web API (`https://api.steampowered.com`) plus keyless storefront details (`https://store.steampowered.com/api/appdetails`).
 
 Not affiliated with Valve. Steam® is a trademark of Valve Corporation.
 
