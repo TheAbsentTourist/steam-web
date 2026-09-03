@@ -1,12 +1,12 @@
 # VERIFY
 
-Proven in this VM on 2026-09-02. Commands run from the plugin root (`/workspace` here; locally, the real directory `~/.cursor/plugins/local/steam-web`, not a symlink).
+Proven in this VM on 2026-09-03. Commands run from the plugin root (`/workspace` here; locally, the real directory `~/.cursor/plugins/local/steam-web`, not a symlink).
 
 ## Environment
 
 - Node.js `v22.14.0` (`node --check` / direct MCP spawn; 18+ required)
 - No `STEAM_WEB_API_KEY` in this environment (news smoke does not need one)
-- Live host: `https://api.steampowered.com`
+- Live host: `https://api.steampowered.com` (Web API) and keyless `https://store.steampowered.com/api/appdetails` (`steam_get_app_details` only)
 - No bundled `bin/steam-web-mcp` (linux bun blob not reintroduced)
 - This VERIFY host is Linux. Optional terminal helpers `scripts/run-mcp.cmd` / `scripts/find-node.cmd` are not spawned here (`cmd.exe` absent). They are **not** the Cursor `mcp.json` entry.
 
@@ -53,8 +53,10 @@ The script:
 | --- | --- |
 | initialize `serverInfo.name` = `steam-web` | **PASS** |
 | `protocolVersion` | `2024-11-05` |
-| `tools/list` includes `steam_get_news` (28 tools) | **PASS** |
+| `tools/list` includes `steam_get_news` (35 tools, including store/tag/follow/economy) | **PASS** |
 | MCP title also on `api.steampowered.com` | **PASS** — `Australian Hightower Highjinx 2026` |
+| `steam_get_app_details` Factorio 427520 `cc=us` (keyless storefront) | **PASS** — name Factorio, `$35.00`, no HTML blobs |
+| `steam_get_app_details` TF2 440 | **PASS** — `is_free` true, no `price_overview` |
 
 ## 4. MCP launcher (offline)
 
@@ -74,6 +76,6 @@ Asserts `command` is `node` with `args` `["./server.mjs"]`, **no `cwd`** (or `cw
 - Optional terminal helpers `scripts/run-mcp.cmd` / `scripts/find-node.cmd` on Windows (`call scripts\find-node.cmd` persisting `NODE`; missing-node stderr without `. was unexpected`)
 - Linux Cursor AppImage / Flatpak stdio MCP spawn (not supported: `ENOENT` even for existing host binaries)
 - Host injection of `PLUGIN_ROOT` / `PLUGIN_DATA` (not used in `mcp.json` command/args; env placeholders `STEAM_WEB_API_KEY` / `STEAM_ID` already work)
-- Keyed tools (`STEAM_WEB_API_KEY` absent): library, friends, achievements, trades, Workshop search, `IStoreService/GetAppList`
+- Keyed tools (`STEAM_WEB_API_KEY` absent): library, friends, achievements, trades, Workshop search, `IStoreService/GetAppList`, tags, followed games, `ISteamEconomy/GetAssetClassInfo`
 - Private-profile `401`/`403` → `private_or_unavailable` against a real hidden profile
 - Cursor Marketplace (out of scope; do not publish)

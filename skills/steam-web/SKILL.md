@@ -4,17 +4,20 @@ description: >
   Use when the user asks about a Steam library, playtime, Steam level,
   badges, achievements, user stats, friends, VAC/community bans, player profiles,
   vanity URLs, official app news, current player counts, global achievement
-  rarity, store catalog appids, dedicated servers at an IP, version up-to-date
-  checks, Web API server time, the official supported method list, the key
-  owner's Steam trades/offers, or Workshop items/collections/search. Call the
-  steam_* MCP tools. Never invent API data. Official Steam Web API only — do not
-  scrape store.steampowered.com. Private profiles yield empty results or 401/403
+  rarity, store catalog appids, store prices/details for one app, store tags,
+  followed games, in-game economy item class metadata, dedicated servers at an
+  IP, version up-to-date checks, Web API server time, the official supported
+  method list, the key owner's Steam trades/offers, or Workshop
+  items/collections/search. Call the steam_* MCP tools. Never invent API data.
+  Use steam_get_app_details for storefront catalog/prices (keyless
+  store.steampowered.com/api/appdetails). Do not scrape store HTML or call
+  wishlist/cart/checkout. Private profiles yield empty results or 401/403
   (private_or_unavailable).
 ---
 
 # Steam Web API
 
-Call the `steam-web` MCP tools. Return only data those tools return. Host is `api.steampowered.com`. Do not invent endpoints from `steam_get_supported_api_list` unless they are in this skill. Do not invent dummy `publishedfileid`, `ugcid`, `tradeofferid`, IPs, or an installed version.
+Call the `steam-web` MCP tools. Return only data those tools return. Host is `api.steampowered.com` except `steam_get_app_details` (keyless `store.steampowered.com/api/appdetails`). Do not invent endpoints from `steam_get_supported_api_list` unless they are in this skill. Do not invent dummy `publishedfileid`, `ugcid`, `tradeofferid`, IPs, or an installed version.
 
 ## When an id is omitted
 
@@ -55,9 +58,18 @@ When an id is unknown, prefer the optional gathering below. Do not invent dummy 
 - How many people are in-app now → `steam_get_number_of_current_players` (no key)
 - Official game news → `steam_get_news` (no key; `appid`; default count 5)
 
-## Catalog, servers, API util
+## Catalog, store, tags, follows
 
-- Store catalog appids (not prices, not search) → `steam_get_app_list` (`last_appid` to page)
+- Store catalog appids and names (not prices, not search) → `steam_get_app_list` (`last_appid` to page)
+- Store name, price, platforms, genres for **one** appid → `steam_get_app_details` (keyless storefront; optional `cc`, `l`). Do not pass a comma-separated appid list. This is catalog/prices, not checkout.
+- Full store tag catalog → `steam_get_tag_list` (optional `have_version_hash`; matching hash → empty tags, not an error)
+- Popularity-ordered tags → `steam_get_most_popular_tags`
+- Localized tag names → `steam_get_localized_name_for_tags` (`tagids` required)
+- Apps a profile follows → `steam_get_games_followed` (`steamid` defaults to `STEAM_ID`)
+- Follow count → `steam_get_games_followed_count`
+
+## Servers, API util
+
 - Game servers at an IP → `steam_get_servers_at_address`. Omit `addr` to use GetPlayerSummaries `gameserverip` when in a multiplayer session; else `invalid_arguments`. Do not invent an IP.
 - Is this install current? → `steam_up_to_date_check` (`appid` and numeric installed depot `version` required). Do not invent `version` from GetSchemaForGame. Missing, empty, or non-numeric `version` → `invalid_arguments`. Valve `success: false` for a real version is passed through, not private.
 - Web API clock → `steam_get_server_info` (no key)
@@ -72,6 +84,10 @@ These IEconService calls typically only return the **Web API key owner's** trade
 - One offer → `steam_get_trade_offer`. Omit `tradeofferid` to load active sent+received offers: exactly one is returned; several → `need_tradeofferid` plus `offer_ids`; none → `not_found`. A missing offer on HTTP 200 is `not_found`, not private.
 - Counts → `steam_get_trade_offers_summary`
 
+## Economy items
+
+- In-game item class metadata (name, tags, descriptions) — **not** Steam store game prices → `steam_get_asset_class_info` (`appid` + `classids`). Optional `instanceids`, `language`.
+
 ## Workshop
 
 - Item details → `steam_get_published_file_details` (POST). Pass `publishedfileids`, or omit them and pass `appid` to QueryFiles a small page and fetch those ids. No workshop items → `{ files: [] }` with a short message, not an error. Per-item EResult `1` = ok, `9` = `file_not_found`.
@@ -81,7 +97,7 @@ These IEconService calls typically only return the **Web API key owner's** trade
 
 ## Rules
 
-- Official Web API only (`api.steampowered.com`). Never scrape `store.steampowered.com` or call undocumented storefront / wishlist endpoints.
+- Official Web API (`api.steampowered.com`) plus the dedicated keyless storefront GET `store.steampowered.com/api/appdetails` via `steam_get_app_details`. Never scrape store HTML or call wishlist, cart, or checkout endpoints.
 - Never invent titles, playtime, achievements, friends, trades, profiles, workshop ids, or server IPs.
 - Private or hidden profiles: report `private_or_unavailable` only for 401/403 (or a truly private list). Missing/empty/not-found is not private.
 - Playtime fields are already minutes (`playtime_forever_min`, `playtime_2weeks_min`).

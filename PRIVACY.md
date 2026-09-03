@@ -4,7 +4,7 @@
 
 ## What this plugin does
 
-The plugin runs on the installer’s machine. It has no backend operated by the plugin author. When you use a keyed tool, it sends HTTP requests from your machine to Valve’s Steam Web API (`https://api.steampowered.com`).
+The plugin runs on the installer’s machine. It has no backend operated by the plugin author. When you use a keyed tool, it sends HTTP requests from your machine to Valve’s Steam Web API (`https://api.steampowered.com`). Store app details (`steam_get_app_details`) are a keyless GET to `https://store.steampowered.com/api/appdetails` — the Web API key is never sent to that host.
 
 ## Credentials
 

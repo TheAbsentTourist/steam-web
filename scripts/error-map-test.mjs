@@ -13,7 +13,7 @@ import {
   SERVER_INFO,
 } from "../server.mjs";
 
-assert.equal(SERVER_INFO.version, "0.2.8");
+assert.equal(SERVER_INFO.version, "0.2.9");
 
 const vanityUrl = parseVanityInput("https://steamcommunity.com/id/ExampleUser/");
 assert.equal(vanityUrl.vanityurl, "ExampleUser");
@@ -158,6 +158,65 @@ globalThis.fetch = async (url, init = {}) => {
   }
   if (path.includes("/ISteamUser/ResolveVanityURL/")) {
     return jsonResponse({ response: { success: 42, message: "No match" } });
+  }
+  if (href.includes("store.steampowered.com/api/appdetails")) {
+    const u = new URL(href);
+    if (u.searchParams.has("key")) throw new Error(`must not send key= to storefront ${href}`);
+    const appids = u.searchParams.get("appids") || "";
+    if (appids === "0" || appids.includes(",")) {
+      return new Response("null", { status: 400, headers: { "Content-Type": "application/json" } });
+    }
+    if (appids === "1") {
+      return jsonResponse({ "1": { success: false } });
+    }
+    if (appids === "427520") {
+      return jsonResponse({
+        "427520": {
+          success: true,
+          data: {
+            steam_appid: 427520,
+            name: "Factorio",
+            type: "game",
+            is_free: false,
+            short_description: "Factory game",
+            developers: ["Wube Software"],
+            publishers: ["Wube Software"],
+            platforms: { windows: true, mac: true, linux: true },
+            release_date: { coming_soon: false, date: "Aug 14, 2020" },
+            categories: [{ id: 2, description: "Single-player" }],
+            genres: [{ id: "70", description: "Strategy" }],
+            price_overview: {
+              currency: "USD",
+              initial: 3500,
+              final: 3500,
+              discount_percent: 0,
+              initial_formatted: "",
+              final_formatted: "$35.00",
+            },
+            detailed_description: "<p>huge</p>",
+            about_the_game: "<p>huge</p>",
+            pc_requirements: { minimum: "huge" },
+          },
+        },
+      });
+    }
+    return new Response("null", { status: 400, headers: { "Content-Type": "application/json" } });
+  }
+  if (path.includes("/ISteamEconomy/GetAssetClassInfo/")) {
+    const classid0 = new URL(href).searchParams.get("classid0");
+    if (classid0 === "1") {
+      return jsonResponse({ result: { success: false, error: "Invalid or missing classid" } });
+    }
+    return jsonResponse({ result: { success: false, error: "unknown classid" } });
+  }
+  if (
+    path.includes("/IStoreService/GetTagList/") ||
+    path.includes("/IStoreService/GetMostPopularTags/") ||
+    path.includes("/IStoreService/GetLocalizedNameForTags/") ||
+    path.includes("/IStoreService/GetGamesFollowed/") ||
+    path.includes("/IStoreService/GetGamesFollowedCount/")
+  ) {
+    return new Response("{}", { status: 401, headers: { "Content-Type": "application/json" } });
   }
   throw new Error(`unexpected fetch ${href}`);
 };
@@ -380,6 +439,53 @@ function payloadOf(result) {
   const input = JSON.parse(decodeURIComponent(new URL(q.href).searchParams.get("input_json")));
   assert.equal(input.creatorid, "76561198000000000");
 }
+
+{
+  const r = await callTool("steam_get_app_details", { appid: 0 });
+  assert.equal(r.isError, true);
+  assert.equal(r.payload.error, "http_error");
+  assert.equal(r.payload.status, 400);
+  assert.notEqual(r.payload.error, "private_or_unavailable");
+}
+
+{
+  const r = await callTool("steam_get_app_details", { appid: 1 });
+  assert.equal(r.isError, true);
+  assert.equal(r.payload.error, "not_found");
+  assert.notEqual(r.payload.error, "private_or_unavailable");
+}
+
+{
+  const r = await callTool("steam_get_app_details", { appid: 427520, cc: "us" });
+  assert.equal(r.isError, undefined);
+  assert.equal(r.payload.name, "Factorio");
+  assert.equal(r.payload.price_overview.final_formatted, "$35.00");
+  assert.equal(r.payload.detailed_description, undefined);
+  assert.equal(r.payload.is_free, false);
+}
+
+{
+  const r = await callTool("steam_get_asset_class_info", { appid: 440, classids: [1] });
+  assert.equal(r.isError, true);
+  assert.equal(r.payload.error, "not_found");
+  assert.notEqual(r.payload.error, "private_or_unavailable");
+}
+
+{
+  const r = await callTool("steam_get_tag_list", {});
+  assert.equal(r.payload.error, "private_or_unavailable");
+  assert.equal(r.isError, undefined);
+}
+
+{
+  const r = await callTool("steam_get_games_followed", {});
+  assert.equal(r.payload.error, "private_or_unavailable");
+  assert.equal(r.isError, undefined);
+}
+
+await assert.rejects(async () => {
+  await globalThis.fetch("https://api.steampowered.com/IDoesNotExist/Foo/v1/");
+}, /unexpected fetch/);
 
 globalThis.fetch = origFetch;
 delete process.env.STEAM_WEB_API_KEY;

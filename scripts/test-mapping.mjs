@@ -3,7 +3,7 @@
  * Unit checks for vanity parsing, EResult decode, and error mapping.
  * Mocks fetch — does not invent live Steam data.
  */
-import { decodeEResult, parseVanityInput, callTool, SERVER_INFO } from "../server.mjs";
+import { decodeEResult, parseVanityInput, callTool, SERVER_INFO, TOOLS, HANDLERS, storeAppHint } from "../server.mjs";
 
 function eq(actual, expected, label) {
   const a = JSON.stringify(actual);
@@ -16,10 +16,33 @@ function eq(actual, expected, label) {
   }
 }
 
-if (SERVER_INFO.version !== "0.2.8") {
+if (SERVER_INFO.version !== "0.2.9") {
   console.error("FAIL SERVER_INFO.version", SERVER_INFO);
   process.exit(1);
 }
+
+const NEW_TOOLS = [
+  "steam_get_app_details",
+  "steam_get_tag_list",
+  "steam_get_most_popular_tags",
+  "steam_get_localized_name_for_tags",
+  "steam_get_games_followed",
+  "steam_get_games_followed_count",
+  "steam_get_asset_class_info",
+];
+const toolNames = TOOLS.map((t) => t.name);
+const handlerNames = Object.keys(HANDLERS);
+if (toolNames.length !== handlerNames.length || toolNames.some((n) => !HANDLERS[n])) {
+  console.error("FAIL TOOLS/HANDLERS mismatch", { toolNames, handlerNames });
+  process.exit(1);
+}
+for (const n of NEW_TOOLS) {
+  if (!toolNames.includes(n) || !HANDLERS[n]) {
+    console.error("FAIL missing new tool", n);
+    process.exit(1);
+  }
+}
+eq(storeAppHint({ appid: 440, name: "Team Fortress 2", last_modified: 1 }).name, "Team Fortress 2", "storeAppHint keeps name");
 
 eq(parseVanityInput("gaben"), { vanityurl: "gaben" }, "bare vanity slug");
 eq(parseVanityInput("https://steamcommunity.com/id/gaben/"), { vanityurl: "gaben", url_type: 1 }, "full /id/ URL");
@@ -222,5 +245,193 @@ if (calls.some((c) => /GetSchemaForGame/.test(c.href))) {
   console.error("FAIL up-to-date must not call GetSchemaForGame");
   process.exit(1);
 }
+
+scripted.push({
+  status: 200,
+  body: {
+    response: {
+      apps: [{ appid: 440, name: "Team Fortress 2", last_modified: 1, price_change_number: 2 }],
+      have_more_results: false,
+      last_appid: 440,
+    },
+  },
+});
+const listed = await run("steam_get_app_list", { max_results: 1 });
+eq(listed.payload.apps?.[0]?.name, "Team Fortress 2", "GetAppList storeAppHint includes name");
+eq(listed.payload.apps?.[0]?.appid, 440, "GetAppList appid");
+
+const commaApp = await run("steam_get_app_details", { appid: "427520,440" });
+eq(commaApp.payload.error, "invalid_arguments", "comma appids rejected");
+if (calls.some((c) => /store\.steampowered\.com/.test(c.href))) {
+  console.error("FAIL comma appids must not hit storefront");
+  process.exit(1);
+}
+
+scripted.push({ status: 400, body: null });
+const zeroApp = await run("steam_get_app_details", { appid: 0 });
+eq(zeroApp.isError, true, "appid 0 isError");
+eq(zeroApp.payload.error, "http_error", "appid 0 http_error");
+eq(zeroApp.payload.status, 400, "appid 0 status 400");
+
+scripted.push({ status: 200, body: { "1": { success: false } } });
+const missingApp = await run("steam_get_app_details", { appid: 1 });
+eq(missingApp.payload.error, "not_found", "success:false is not_found");
+eq(missingApp.isError, true, "success:false isError");
+eq(missingApp.payload.error === "private_or_unavailable", false, "success:false is not private");
+
+const factorioBody = {
+  "427520": {
+    success: true,
+    data: {
+      steam_appid: 427520,
+      name: "Factorio",
+      type: "game",
+      is_free: false,
+      short_description: "Factory game",
+      developers: ["Wube Software"],
+      publishers: ["Wube Software"],
+      website: "https://www.factorio.com",
+      header_image: "https://example.com/header.jpg",
+      platforms: { windows: true, mac: true, linux: true },
+      release_date: { coming_soon: false, date: "Aug 14, 2020" },
+      categories: [{ id: 2, description: "Single-player" }],
+      genres: [{ id: "70", description: "Early Access" }],
+      price_overview: {
+        currency: "USD",
+        initial: 3500,
+        final: 3500,
+        discount_percent: 0,
+        initial_formatted: "",
+        final_formatted: "$35.00",
+      },
+      detailed_description: "<p>huge html</p>",
+      about_the_game: "<p>huge html</p>",
+      pc_requirements: { minimum: "huge" },
+    },
+  },
+};
+scripted.push({ status: 200, body: factorioBody });
+const factorio = await run("steam_get_app_details", { appid: 427520, cc: "us" });
+eq(factorio.payload.name, "Factorio", "Factorio name");
+eq(factorio.payload.is_free, false, "Factorio not free");
+eq(factorio.payload.price_overview?.final_formatted, "$35.00", "Factorio price");
+eq(factorio.payload.detailed_description, undefined, "omit huge HTML");
+eq(factorio.payload.pc_requirements, undefined, "omit pc_requirements");
+const storeCalls = calls.filter((c) => /store\.steampowered\.com\/api\/appdetails/.test(c.href));
+if (!storeCalls.some((c) => /appids=427520/.test(c.href) && /cc=us/.test(c.href))) {
+  console.error("FAIL Factorio storefront query", storeCalls);
+  process.exit(1);
+}
+if (storeCalls.some((c) => /[?&]key=/.test(c.href))) {
+  console.error("FAIL storefront must not send key=", storeCalls);
+  process.exit(1);
+}
+
+const cached = await run("steam_get_app_details", { appid: 427520, cc: "us" });
+eq(cached.payload.name, "Factorio", "cached Factorio");
+if (calls.filter((c) => /store\.steampowered\.com\/api\/appdetails/.test(c.href)).length !== storeCalls.length) {
+  console.error("FAIL successful appdetails should be cached");
+  process.exit(1);
+}
+
+scripted.push({
+  status: 200,
+  body: {
+    "440": {
+      success: true,
+      data: {
+        steam_appid: 440,
+        name: "Team Fortress 2",
+        type: "game",
+        is_free: true,
+        short_description: "Hats",
+        developers: ["Valve"],
+        publishers: ["Valve"],
+        platforms: { windows: true, mac: true, linux: true },
+        release_date: { coming_soon: false, date: "Oct 10, 2007" },
+        categories: [],
+        genres: [],
+      },
+    },
+  },
+});
+const tf2 = await run("steam_get_app_details", { appid: 440 });
+eq(tf2.payload.is_free, true, "TF2 free");
+eq(tf2.payload.price_overview, undefined, "TF2 omits price_overview");
+
+scripted.push({
+  status: 200,
+  headers: { "x-eresult": "29" },
+  body: { response: {} },
+});
+const notModified = await run("steam_get_tag_list", { have_version_hash: "abc" });
+eq(notModified.payload.tags, [], "eresult 29 empty tags");
+eq(notModified.payload.version_hash, "abc", "eresult 29 keeps hash");
+eq(notModified.payload.error, undefined, "eresult 29 is not an error");
+
+scripted.push({
+  status: 200,
+  headers: { "x-eresult": "1" },
+  body: { response: { version_hash: "v1", tags: [{ tagid: 19, name: "Action" }] } },
+});
+const tags = await run("steam_get_tag_list", {});
+eq(tags.payload.tags, [{ tagid: 19, name: "Action" }], "tag list shape");
+eq(tags.payload.version_hash, "v1", "tag list hash");
+const tagCall = [...calls].reverse().find((c) => /GetTagList/.test(c.href));
+if (!tagCall || !/input_json=/.test(tagCall.href) || /input_json=.*key/.test(decodeURIComponent(tagCall.href))) {
+  console.error("FAIL GetTagList must use input_json without key inside it", tagCall?.href);
+  process.exit(1);
+}
+
+scripted.push({
+  status: 200,
+  body: {
+    result: {
+      success: true,
+      "195": {
+        classid: "195",
+        name: "Gloves of Running Urgently",
+        market_name: "Gloves of Running Urgently",
+        type: "Level 10 Gloves",
+        tradable: "1",
+        marketable: "0",
+        icon_url: "abc",
+        tags: { "0": { name: "Unique" }, "1": { name: "Gloves" } },
+        descriptions: { "0": { value: "desc" } },
+        app_data: { def_index: "239" },
+      },
+    },
+  },
+});
+const gru = await run("steam_get_asset_class_info", { appid: 440, classids: [195] });
+eq(gru.payload.items?.[0]?.name, "Gloves of Running Urgently", "GRU name");
+eq(gru.payload.items?.[0]?.tradable, true, "GRU tradable normalized");
+eq(gru.payload.items?.[0]?.marketable, false, "GRU marketable normalized");
+eq(gru.payload.items?.[0]?.tags?.length, 2, "GRU tags array");
+eq(gru.payload.items?.[0]?.descriptions?.length, 1, "GRU descriptions array");
+const classCall = [...calls].reverse().find((c) => /GetAssetClassInfo/.test(c.href));
+if (!classCall || !/classid0=195/.test(classCall.href) || !/class_count=1/.test(classCall.href) || /input_json=/.test(classCall.href)) {
+  console.error("FAIL GetAssetClassInfo must be keyed classid0 GET, not input_json", classCall?.href);
+  process.exit(1);
+}
+
+scripted.push({ status: 200, body: { result: { success: false, error: "Invalid or missing classid" } } });
+const badClass = await run("steam_get_asset_class_info", { appid: 440, classids: [1] });
+eq(badClass.payload.error, "not_found", "bogus classid not_found");
+eq(badClass.payload.error === "private_or_unavailable", false, "bogus classid is not private");
+
+scripted.push({ status: 401, body: {} });
+const followed401 = await run("steam_get_games_followed", { steamid: "1" });
+eq(followed401.payload.error, "private_or_unavailable", "IStore GET 401 is private");
+eq(followed401.isError, undefined, "IStore 401 has no isError");
+
+const noFollowId = await run("steam_get_games_followed", {});
+eq(noFollowId.payload.error, "invalid_arguments", "followed requires steamid");
+const noCountId = await run("steam_get_games_followed_count", {});
+eq(noCountId.payload.error, "invalid_arguments", "followed count requires steamid");
+const noTags = await run("steam_get_localized_name_for_tags", {});
+eq(noTags.payload.error, "invalid_arguments", "localized tags require tagids");
+const noClassids = await run("steam_get_asset_class_info", { appid: 440 });
+eq(noClassids.payload.error, "invalid_arguments", "asset class info requires classids");
 
 console.log("PASS mapping");

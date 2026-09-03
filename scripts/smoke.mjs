@@ -113,8 +113,22 @@ if (init?.result?.serverInfo?.name !== "steam-web") {
   process.exit(1);
 }
 const names = (list?.result?.tools ?? []).map((t) => t.name);
-if (!names.includes("steam_get_news") || names.length < 20) {
-  console.error("FAIL tools/list", names);
+const NEW_TOOLS = [
+  "steam_get_app_details",
+  "steam_get_tag_list",
+  "steam_get_most_popular_tags",
+  "steam_get_localized_name_for_tags",
+  "steam_get_games_followed",
+  "steam_get_games_followed_count",
+  "steam_get_asset_class_info",
+];
+if (!names.includes("steam_get_news") || names.length !== 35) {
+  console.error("FAIL tools/list count", names.length, names);
+  process.exit(1);
+}
+const missingNew = NEW_TOOLS.filter((n) => !names.includes(n));
+if (missingNew.length) {
+  console.error("FAIL tools/list missing", missingNew);
   process.exit(1);
 }
 if (call?.result?.isError) {

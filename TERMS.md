@@ -17,6 +17,10 @@ By using this plugin you agree to follow:
 
 In particular: keep your Web API key confidential; do not share it; do not present this plugin as a Valve or Steam product; do not use it for cheats, unfair multiplayer advantage, or unsolicited marketing; respect Valve’s 100,000 calls/day cap.
 
+Those Steam Web API terms apply to requests this plugin makes to `https://api.steampowered.com`.
+
+`steam_get_app_details` uses the unofficial keyless storefront host `https://store.steampowered.com/api/appdetails` (read-only catalog/prices). That endpoint is **not** the Valve Web API. Responses are throttled and cached in memory. Do not use this plugin for checkout, cart, or wishlist writes.
+
 You are responsible for how you use the plugin and for any Steam data you retrieve.
 
 ## No warranty
