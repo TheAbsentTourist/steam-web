@@ -1,8 +1,10 @@
 #!/usr/bin/env node
 /**
  * Zero-dep stdio MCP server for the official Steam Web API
- * (https://api.steampowered.com only). Credentials: process.env, then
- * $PLUGIN_DATA/config.json. Service interfaces use input_json.
+ * (https://api.steampowered.com) plus a dedicated keyless GET to
+ * https://store.steampowered.com/api/appdetails (never via steamGet).
+ * Credentials: process.env, then $PLUGIN_DATA/config.json.
+ * Service interfaces use input_json. key stays a query param, never inside input_json.
  */
 import { readFileSync } from "node:fs";
 import { join } from "node:path";
@@ -10,9 +12,12 @@ import { stdin, stdout } from "node:process";
 import { pathToFileURL } from "node:url";
 
 const PROTOCOL_VERSION = "2024-11-05";
-const SERVER_INFO = { name: "steam-web", version: "0.2.8" };
+const SERVER_INFO = { name: "steam-web", version: "0.2.9" };
 const API_HOST = "https://api.steampowered.com";
+const STOREFRONT_APPDETAILS = "https://store.steampowered.com/api/appdetails";
 const TIMEOUT_MS = 15_000;
+const STORE_CACHE_MS = 3_600_000;
+const STORE_MIN_GAP_MS = 250;
 const KEY_HELP =
   "Set STEAM_WEB_API_KEY in the host environment or $PLUGIN_DATA/config.json. Get a user key at https://steamcommunity.com/dev/apikey";
 const STORE_MAX = 50_000;
@@ -84,6 +89,7 @@ function httpFail(r) {
 
 const ERESULT_OK = 1;
 const ERESULT_FILE_NOT_FOUND = 9;
+const ERESULT_NOT_MODIFIED = 29;
 const COMMUNITY_BADGEID = 2;
 const SKIP_EMPTY_BADGEIDS = new Set([1, 13]);
 const WORKSHOP_GATHER_PAGE = 5;
@@ -266,13 +272,18 @@ async function steamRequest({ iface, method, version, params = {}, http = "GET",
     }
     const text = await res.text();
     const parsed = parseJsonLoose(text);
+    const eresultHeader = res.headers?.get?.("x-eresult");
+    const eresult = eresultHeader != null && eresultHeader !== "" ? Number(eresultHeader) : undefined;
     if (res.status === 401 || res.status === 403) {
-      return { private: true, status: res.status, text, body: parsed };
+      return { private: true, status: res.status, text, body: parsed, eresult };
     }
-    if (!res.ok) return { fail: true, status: res.status, text, body: parsed };
-    if (!text.trim()) return { private: true, status: res.status, empty: true };
-    if (!parsed) return { fail: true, status: res.status, text: "invalid JSON from Steam Web API" };
-    return { body: parsed, status: res.status };
+    if (!res.ok) return { fail: true, status: res.status, text, body: parsed, eresult };
+    if (!text.trim()) {
+      if (eresult === ERESULT_NOT_MODIFIED) return { body: { response: {} }, status: res.status, eresult };
+      return { private: true, status: res.status, empty: true, eresult };
+    }
+    if (!parsed) return { fail: true, status: res.status, text: "invalid JSON from Steam Web API", eresult };
+    return { body: parsed, status: res.status, eresult };
   } catch (err) {
     if (err?.name === "AbortError") {
       return { fail: true, text: `Steam Web API timed out after ${TIMEOUT_MS}ms` };
@@ -328,9 +339,130 @@ function playerBan(p) {
 
 function storeAppHint(a) {
   const out = { appid: Number(a.appid) };
+  if (a.name != null) out.name = a.name;
   if (a.last_modified != null) out.last_modified = a.last_modified;
   if (a.price_change_number != null) out.price_change_number = a.price_change_number;
   return out;
+}
+
+function indexedToArray(obj) {
+  if (Array.isArray(obj)) return obj;
+  if (!obj || typeof obj !== "object") return [];
+  return Object.keys(obj)
+    .filter((k) => /^\d+$/.test(k))
+    .sort((a, b) => Number(a) - Number(b))
+    .map((k) => obj[k]);
+}
+
+function asFlag(v) {
+  if (v === true || v === 1 || v === "1") return true;
+  if (v === false || v === 0 || v === "0" || v === "") return false;
+  return Boolean(v);
+}
+
+function slimStoreAppDetails(data) {
+  const out = {
+    appid: Number(data.steam_appid),
+    name: data.name ?? "",
+    type: data.type ?? "",
+    is_free: Boolean(data.is_free),
+  };
+  if (present(data.short_description)) out.short_description = data.short_description;
+  if (Array.isArray(data.developers)) out.developers = data.developers;
+  if (Array.isArray(data.publishers)) out.publishers = data.publishers;
+  if (present(data.website)) out.website = data.website;
+  if (present(data.header_image)) out.header_image = data.header_image;
+  if (data.platforms && typeof data.platforms === "object") out.platforms = data.platforms;
+  if (data.release_date && typeof data.release_date === "object") {
+    out.release_date = pick(data.release_date, ["coming_soon", "date"]);
+  }
+  if (Array.isArray(data.categories)) {
+    out.categories = data.categories.map((c) => pick(c, ["id", "description"]));
+  }
+  if (Array.isArray(data.genres)) {
+    out.genres = data.genres.map((g) => pick(g, ["id", "description"]));
+  }
+  if (!out.is_free && data.price_overview && typeof data.price_overview === "object") {
+    out.price_overview = pick(data.price_overview, [
+      "currency",
+      "initial",
+      "final",
+      "discount_percent",
+      "initial_formatted",
+      "final_formatted",
+    ]);
+  }
+  return out;
+}
+
+function slimAssetClassInfo(item, key) {
+  const out = {
+    classid: String(item.classid ?? key),
+    name: item.name,
+    market_name: item.market_name,
+    type: item.type,
+    tradable: asFlag(item.tradable),
+    marketable: asFlag(item.marketable),
+    icon_url: item.icon_url,
+    tags: indexedToArray(item.tags),
+    descriptions: indexedToArray(item.descriptions),
+  };
+  if (item.app_data != null) out.app_data = item.app_data;
+  return out;
+}
+
+function slimStoreTags(list) {
+  if (!Array.isArray(list)) return [];
+  return list.map((t) => ({ tagid: Number(t.tagid), name: t.name }));
+}
+
+const storeAppDetailsCache = new Map();
+let storeLastRequestAt = 0;
+let storefrontChain = Promise.resolve();
+
+function storeCacheKey(appid, cc, l) {
+  return `${appid}\0${cc ?? ""}\0${l ?? ""}`;
+}
+
+function storefrontHttpError(status, text) {
+  return {
+    isError: true,
+    payload: { error: "http_error", message: text || "Store appdetails request failed", status },
+  };
+}
+
+async function storefrontAppDetailsGet(appid, cc, l) {
+  const url = new URL(STOREFRONT_APPDETAILS);
+  url.searchParams.set("appids", String(appid));
+  if (present(cc)) url.searchParams.set("cc", String(cc));
+  if (present(l)) url.searchParams.set("l", String(l));
+
+  const wait = STORE_MIN_GAP_MS - (Date.now() - storeLastRequestAt);
+  if (wait > 0) await new Promise((resolve) => setTimeout(resolve, wait));
+  storeLastRequestAt = Date.now();
+
+  const ac = new AbortController();
+  const timer = setTimeout(() => ac.abort(), TIMEOUT_MS);
+  try {
+    const res = await fetch(url, { method: "GET", redirect: "follow", credentials: "omit", signal: ac.signal });
+    const text = await res.text();
+    const parsed = parseJsonLoose(text);
+    if (!res.ok) return storefrontHttpError(res.status, text || "Store appdetails request failed");
+    if (parsed == null) return storefrontHttpError(res.status, "Store appdetails returned null");
+    if (typeof parsed !== "object") return storefrontHttpError(res.status, "invalid JSON from store appdetails");
+    const entry = parsed[String(appid)];
+    if (!entry || typeof entry !== "object") return notFound("Store app not found");
+    if (entry.success !== true) return notFound("Store app not found");
+    if (!entry.data || typeof entry.data !== "object") return notFound("Store app not found");
+    return { payload: slimStoreAppDetails(entry.data) };
+  } catch (err) {
+    if (err?.name === "AbortError") {
+      return storefrontHttpError(undefined, `Store appdetails timed out after ${TIMEOUT_MS}ms`);
+    }
+    return storefrontHttpError(undefined, err?.message || "Store appdetails request failed");
+  } finally {
+    clearTimeout(timer);
+  }
 }
 
 function slimAsset(a) {
@@ -572,7 +704,7 @@ const TOOLS = [
   {
     name: "steam_get_app_list",
     description:
-      "IStoreService/GetAppList/v1 (input_json). Catalog dump of store appids — not prices or store search. Paginate with last_appid. Default max_results 100, cap 50000. Any web API key.",
+      "IStoreService/GetAppList/v1 (input_json). Catalog dump of store appids and names — not prices or store search. Prices and store details are steam_get_app_details. Paginate with last_appid. Default max_results 100, cap 50000. Any web API key.",
     inputSchema: {
       type: "object",
       properties: {
@@ -586,6 +718,71 @@ const TOOLS = [
         include_videos: { type: "boolean" },
         include_hardware: { type: "boolean" },
       },
+    },
+  },
+  {
+    name: "steam_get_app_details",
+    description:
+      "store.steampowered.com/api/appdetails (keyless storefront, not Valve Web API). One appid per call — not a comma list. Slim store catalog/price details (name, platforms, price_overview when not free). Not checkout. Cached ~1h. Optional cc (country) and l (language).",
+    inputSchema: {
+      type: "object",
+      properties: {
+        appid: { ...appidProp, description: "Single Steam appid (e.g. 427520). Do not pass a comma-separated list." },
+        cc: { type: "string", description: "Store country code (e.g. us)." },
+        l: { type: "string", description: "Store language (e.g. english)." },
+      },
+      required: ["appid"],
+    },
+  },
+  {
+    name: "steam_get_tag_list",
+    description:
+      "IStoreService/GetTagList/v1 (input_json). Full store tag catalog {tagid,name} plus version_hash. language defaults to english. Matching have_version_hash returns empty tags (not-modified), not an error. User key.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        language: { type: "string", description: "Tag language (default english)." },
+        have_version_hash: { type: "string", description: "If this matches the current catalog hash, tags are empty (not-modified)." },
+      },
+    },
+  },
+  {
+    name: "steam_get_most_popular_tags",
+    description: "IStoreService/GetMostPopularTags/v1 (input_json). Popularity-ordered store tags {tagid,name}. language defaults to english. User key.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        language: { type: "string", description: "Tag language (default english)." },
+      },
+    },
+  },
+  {
+    name: "steam_get_localized_name_for_tags",
+    description:
+      "IStoreService/GetLocalizedNameForTags/v1 (input_json). Localized names for store tag ids: {tagid, english_name, name, normalized_name}. language defaults to english. User key.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        tagids: { type: "array", items: { type: "number" }, description: "Store tag ids to localize." },
+        language: { type: "string", description: "Tag language (default english)." },
+      },
+      required: ["tagids"],
+    },
+  },
+  {
+    name: "steam_get_games_followed",
+    description: "IStoreService/GetGamesFollowed/v1 (input_json). Appids a profile follows. steamid defaults to STEAM_ID. User key.",
+    inputSchema: {
+      type: "object",
+      properties: { steamid: steamidProp },
+    },
+  },
+  {
+    name: "steam_get_games_followed_count",
+    description: "IStoreService/GetGamesFollowedCount/v1 (input_json). How many games a profile follows. steamid defaults to STEAM_ID. User key.",
+    inputSchema: {
+      type: "object",
+      properties: { steamid: steamidProp },
     },
   },
   {
@@ -692,6 +889,21 @@ const TOOLS = [
     inputSchema: {
       type: "object",
       properties: { time_last_visit: { type: "number", description: "Unix time of last visit; optional." } },
+    },
+  },
+  {
+    name: "steam_get_asset_class_info",
+    description:
+      "ISteamEconomy/GetAssetClassInfo/v1. In-game item class metadata (name, tags, descriptions) — not Steam store game prices. Keyed GET with class_count + classid0..N (not input_json). Optional instanceids and language. User key.",
+    inputSchema: {
+      type: "object",
+      properties: {
+        appid: appidProp,
+        classids: { type: "array", items: { type: "number" }, description: "Economy class ids (classid0..N)." },
+        instanceids: { type: "array", items: { type: "number" }, description: "Optional instanceid0..N paired with classids." },
+        language: { type: "string", description: "Optional language for strings." },
+      },
+      required: ["appid", "classids"],
     },
   },
   {
@@ -1223,6 +1435,129 @@ async function getAppList(args) {
   };
 }
 
+function asNumList(value) {
+  if (Array.isArray(value)) return value.map(asNum).filter((n) => n != null);
+  if (present(value) && !String(value).includes(",")) {
+    const n = asNum(value);
+    return n != null ? [n] : [];
+  }
+  if (present(value)) return null;
+  return [];
+}
+
+async function getAppDetails(args) {
+  if (!present(args?.appid) && args?.appid !== 0) return invalid("appid is required");
+  if (Array.isArray(args.appid) || String(args.appid).includes(",")) {
+    return invalid("one appid per call (do not pass a comma-separated list)");
+  }
+  const appid = asNum(args.appid);
+  if (appid == null) return invalid("appid must be a number");
+  const cc = present(args?.cc) ? String(args.cc) : undefined;
+  const l = present(args?.l) ? String(args.l) : undefined;
+  const cacheKey = storeCacheKey(appid, cc, l);
+  const hit = storeAppDetailsCache.get(cacheKey);
+  if (hit && hit.expires > Date.now()) return { payload: hit.payload };
+
+  const pending = storefrontChain.then(async () => {
+    const again = storeAppDetailsCache.get(cacheKey);
+    if (again && again.expires > Date.now()) return { payload: again.payload };
+    const result = await storefrontAppDetailsGet(appid, cc, l);
+    if (!result.isError && result.payload && !result.payload.error) {
+      storeAppDetailsCache.set(cacheKey, { expires: Date.now() + STORE_CACHE_MS, payload: result.payload });
+    }
+    return result;
+  });
+  storefrontChain = pending.then(
+    () => {},
+    () => {},
+  );
+  return pending;
+}
+
+async function getTagList(args) {
+  const keyed = requireKey();
+  if (keyed.error) return missingKey();
+  const params = { key: keyed.key, language: present(args?.language) ? args.language : "english" };
+  if (present(args?.have_version_hash)) params.have_version_hash = args.have_version_hash;
+  const r = await steamGet("IStoreService", "GetTagList", 1, params, true);
+  if (isForbidden(r) || r.private) return { payload: privateResult("Tag list forbidden or unavailable") };
+  if (r.fail) return httpFail(r);
+  const resp = r.body?.response ?? {};
+  const eresult = r.eresult ?? steamStatusCode(r.body);
+  const version_hash = present(resp.version_hash)
+    ? resp.version_hash
+    : eresult === ERESULT_NOT_MODIFIED && present(args?.have_version_hash)
+      ? args.have_version_hash
+      : resp.version_hash;
+  if (eresult === ERESULT_NOT_MODIFIED) {
+    return { payload: { version_hash, tags: [] } };
+  }
+  return { payload: { version_hash, tags: slimStoreTags(resp.tags) } };
+}
+
+async function getMostPopularTags(args) {
+  const keyed = requireKey();
+  if (keyed.error) return missingKey();
+  const params = { key: keyed.key, language: present(args?.language) ? args.language : "english" };
+  const r = await steamGet("IStoreService", "GetMostPopularTags", 1, params, true);
+  if (isForbidden(r) || r.private) return { payload: privateResult("Popular tags forbidden or unavailable") };
+  if (r.fail) return httpFail(r);
+  const resp = r.body?.response ?? {};
+  return { payload: { tags: slimStoreTags(resp.tags) } };
+}
+
+async function getLocalizedNameForTags(args) {
+  const keyed = requireKey();
+  if (keyed.error) return missingKey();
+  const tagids = asNumList(args?.tagids, "tagids");
+  if (tagids == null) return invalid("tagids must be an array of numbers");
+  if (!tagids.length) return invalid("tagids is required");
+  const params = {
+    key: keyed.key,
+    language: present(args?.language) ? args.language : "english",
+    tagids,
+  };
+  const r = await steamGet("IStoreService", "GetLocalizedNameForTags", 1, params, true);
+  if (isForbidden(r) || r.private) return { payload: privateResult("Localized tag names forbidden or unavailable") };
+  if (r.fail) return httpFail(r);
+  const tags = Array.isArray(r.body?.response?.tags) ? r.body.response.tags : [];
+  return {
+    payload: {
+      tags: tags.map((t) => ({
+        tagid: Number(t.tagid),
+        english_name: t.english_name,
+        name: t.name,
+        normalized_name: t.normalized_name,
+      })),
+    },
+  };
+}
+
+async function getGamesFollowed(args) {
+  const keyed = requireKey();
+  if (keyed.error) return missingKey();
+  const id = resolveSteamId(args);
+  if (id.error) return invalid(id.message);
+  const r = await steamGet("IStoreService", "GetGamesFollowed", 1, { key: keyed.key, steamid: id.steamid }, true);
+  if (isForbidden(r) || r.private) return { payload: privateResult("Games followed forbidden or unavailable") };
+  if (r.fail) return httpFail(r);
+  const appids = r.body?.response?.appids;
+  return { payload: { appids: Array.isArray(appids) ? appids.map(Number) : [] } };
+}
+
+async function getGamesFollowedCount(args) {
+  const keyed = requireKey();
+  if (keyed.error) return missingKey();
+  const id = resolveSteamId(args);
+  if (id.error) return invalid(id.message);
+  const r = await steamGet("IStoreService", "GetGamesFollowedCount", 1, { key: keyed.key, steamid: id.steamid }, true);
+  if (isForbidden(r) || r.private) return { payload: privateResult("Games followed count forbidden or unavailable") };
+  if (r.fail) return httpFail(r);
+  const count = r.body?.response?.followed_game_count;
+  if (count == null) return { payload: privateResult("Games followed count unavailable") };
+  return { payload: { followed_game_count: Number(count) } };
+}
+
 const ADDR_REQUIRED_MSG =
   "addr is required (or be in a multiplayer session so profile gameserverip is set)";
 
@@ -1427,6 +1762,46 @@ async function getTradeOffersSummary(args) {
   };
 }
 
+async function getAssetClassInfo(args) {
+  const keyed = requireKey();
+  if (keyed.error) return missingKey();
+  const bad = needAppid(args);
+  if (bad) return bad;
+  const classids = asNumList(args?.classids);
+  if (classids == null) return invalid("classids must be an array of numbers");
+  if (!classids.length) return invalid("classids is required");
+  const params = {
+    key: keyed.key,
+    appid: asNum(args.appid),
+    class_count: classids.length,
+  };
+  classids.forEach((id, i) => {
+    params[`classid${i}`] = id;
+  });
+  if (Array.isArray(args?.instanceids)) {
+    args.instanceids.forEach((id, i) => {
+      if (present(id) || id === 0) params[`instanceid${i}`] = id;
+    });
+  }
+  if (present(args?.language)) params.language = args.language;
+  const r = await steamGet("ISteamEconomy", "GetAssetClassInfo", 1, params);
+  if (isForbidden(r) || r.private) return { payload: privateResult("Asset class info forbidden or unavailable") };
+  if (r.fail) return httpFail(r);
+  const result = r.body?.result;
+  if (!result || typeof result !== "object") return notFound("Asset class info not found");
+  const success = result.success;
+  if (success === false || success === "false" || success === 0) {
+    return notFound(result.error || "Asset class info not found");
+  }
+  const items = [];
+  for (const [k, v] of Object.entries(result)) {
+    if (k === "success" || k === "error") continue;
+    if (!v || typeof v !== "object") continue;
+    items.push(slimAssetClassInfo(v, k));
+  }
+  return { payload: { items } };
+}
+
 async function getPublishedFileDetails(args) {
   let ids = asIdList(args?.publishedfileids);
   if (!ids.length) {
@@ -1600,6 +1975,12 @@ const HANDLERS = {
   steam_get_number_of_current_players: getNumberOfCurrentPlayers,
   steam_get_news: getNews,
   steam_get_app_list: getAppList,
+  steam_get_app_details: getAppDetails,
+  steam_get_tag_list: getTagList,
+  steam_get_most_popular_tags: getMostPopularTags,
+  steam_get_localized_name_for_tags: getLocalizedNameForTags,
+  steam_get_games_followed: getGamesFollowed,
+  steam_get_games_followed_count: getGamesFollowedCount,
   steam_get_servers_at_address: getServersAtAddress,
   steam_up_to_date_check: upToDateCheck,
   steam_get_server_info: getServerInfo,
@@ -1608,6 +1989,7 @@ const HANDLERS = {
   steam_get_trade_offers: getTradeOffers,
   steam_get_trade_offer: getTradeOffer,
   steam_get_trade_offers_summary: getTradeOffersSummary,
+  steam_get_asset_class_info: getAssetClassInfo,
   steam_get_published_file_details: getPublishedFileDetails,
   steam_get_collection_details: getCollectionDetails,
   steam_get_ugc_file_details: getUgcFileDetails,
@@ -1761,6 +2143,9 @@ export {
   applyEresult,
   slimPublishedFile,
   slimCollection,
+  storeAppHint,
+  slimStoreAppDetails,
   callTool,
   TOOLS,
+  HANDLERS,
 };

@@ -1,6 +1,6 @@
 # steam-web
 
-Ask Cursor or Grok Bot about Steam libraries, playtime, achievements, friends, profiles, Workshop items, trades, and more — live data from the official Steam Web API (`https://api.steampowered.com`).
+Ask Cursor or Grok Bot about Steam libraries, playtime, achievements, friends, profiles, Workshop items, trades, store prices, tags, and more — live data from the official Steam Web API (`https://api.steampowered.com`) plus keyless storefront app details.
 
 Not affiliated with Valve. Steam® is a trademark of Valve Corporation.
 
@@ -15,7 +15,7 @@ MIT · [TheAbsentTourist](https://github.com/TheAbsentTourist) · chucktastictim
 
 Valve allows up to 100,000 API calls per day per key.
 
-Some tools work **without** a key: news, current player counts, global achievement percentages, server info, up-to-date checks, and published-file / collection details (when you already have an id).
+Some tools work **without** a key: news, current player counts, global achievement percentages, server info, up-to-date checks, published-file / collection details (when you already have an id), and store app details (keyless storefront).
 
 Optional: set a default **SteamID64** so you don’t have to pass your id on every call.
 
@@ -83,10 +83,13 @@ Don’t commit keys or paste them into GitHub issues.
 - **Level & badges** — Steam level, badges, community badge quest progress
 - **Achievements & stats** — unlocks with names/descriptions, raw stats, schema, global unlock %
 - **Live players & news** — who is in-game right now; official app news
-- **Catalog** — official appids and names (not store prices or wishlists)
+- **Catalog** — official appids and names (`steam_get_app_list`); store prices and details for one app (`steam_get_app_details`)
+- **Tags** — full store tag list, most popular tags, localized tag names
+- **Followed games** — apps a profile follows, and the follow count
 - **Servers** — dedicated servers at an IP; or omit the IP when that player is in a multiplayer session and Steam reports a server address
 - **Version check** — whether an installed depot `version` is current (you must supply the real version)
 - **Trades** — history and offers for the **API key owner**
+- **Economy items** — in-game item class metadata (not store game prices)
 - **Workshop** — item details, collections, UGC files, search
 
 Private profiles (and private friend lists) come back as `private_or_unavailable` instead of an empty HTTP error.
@@ -111,6 +114,12 @@ Private profiles (and private friend lists) come back as `private_or_unavailable
 | `steam_get_number_of_current_players` | Current in-app players |
 | `steam_get_news` | Official app news |
 | `steam_get_app_list` | Catalog appids and names |
+| `steam_get_app_details` | Store name, price, platforms, genres for one appid (keyless) |
+| `steam_get_tag_list` | Store tag catalog and version hash |
+| `steam_get_most_popular_tags` | Popularity-ordered store tags |
+| `steam_get_localized_name_for_tags` | Localized names for store tag ids |
+| `steam_get_games_followed` | Appids a profile follows |
+| `steam_get_games_followed_count` | How many games a profile follows |
 | `steam_get_servers_at_address` | Servers at an IP (or session server when `addr` omitted) |
 | `steam_up_to_date_check` | Depot up-to-date check (`version` required) |
 | `steam_get_server_info` | Web API server time |
@@ -119,6 +128,7 @@ Private profiles (and private friend lists) come back as `private_or_unavailable
 | `steam_get_trade_offers` | Key owner’s trade offers |
 | `steam_get_trade_offer` | One offer by id |
 | `steam_get_trade_offers_summary` | Pending offer counts |
+| `steam_get_asset_class_info` | In-game item class metadata (not store prices) |
 | `steam_get_published_file_details` | Workshop item details |
 | `steam_get_collection_details` | Collection children |
 | `steam_get_ugc_file_details` | One UGC file |
