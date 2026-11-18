@@ -4,6 +4,9 @@
  * Does not call api.steampowered.com and does not use secrets.
  */
 import assert from "node:assert/strict";
+import { mkdtempSync, rmSync, writeFileSync } from "node:fs";
+import { tmpdir } from "node:os";
+import { join } from "node:path";
 import {
   parseVanityInput,
   eresultName,
@@ -13,7 +16,7 @@ import {
   SERVER_INFO,
 } from "../server.mjs";
 
-assert.equal(SERVER_INFO.version, "0.2.9");
+assert.equal(SERVER_INFO.version, "0.2.10");
 
 const vanityUrl = parseVanityInput("https://steamcommunity.com/id/ExampleUser/");
 assert.equal(vanityUrl.vanityurl, "ExampleUser");
@@ -486,6 +489,50 @@ function payloadOf(result) {
 await assert.rejects(async () => {
   await globalThis.fetch("https://api.steampowered.com/IDoesNotExist/Foo/v1/");
 }, /unexpected fetch/);
+
+{
+  const fetches = [];
+  globalThis.fetch = async (url) => {
+    fetches.push(String(url));
+    throw new Error(`placeholder must not be sent: ${url}`);
+  };
+  process.env.STEAM_WEB_API_KEY = "${STEAM_WEB_API_KEY}";
+  process.env.STEAM_ID = "${STEAM_ID}";
+  delete process.env.PLUGIN_DATA;
+  const placeholder = await callTool("steam_get_friends", {});
+  assert.equal(placeholder.payload.error, "missing_key");
+  assert.equal(fetches.length, 0, "literal ${STEAM_WEB_API_KEY} must not be sent as a key");
+
+  process.env.STEAM_WEB_API_KEY = "   ";
+  process.env.STEAM_ID = "";
+  const blank = await callTool("steam_get_friends", {});
+  assert.equal(blank.payload.error, "missing_key");
+  assert.equal(fetches.length, 0, "blank credentials must not be sent");
+
+  process.env.STEAM_WEB_API_KEY = "test-key-not-real";
+  process.env.STEAM_ID = "${STEAM_ID}";
+  const placeholderId = await callTool("steam_get_friends", {});
+  assert.equal(placeholderId.payload.error, "invalid_arguments");
+  assert.match(placeholderId.payload.message, /steamid is required/);
+  assert.equal(fetches.length, 0, "literal ${STEAM_ID} must not be sent as a steamid");
+
+  const dir = mkdtempSync(join(tmpdir(), "steam-web-cfg-"));
+  writeFileSync(
+    join(dir, "config.json"),
+    JSON.stringify({
+      STEAM_WEB_API_KEY: "${STEAM_WEB_API_KEY}",
+      STEAM_ID: "${STEAM_ID}",
+    }),
+  );
+  delete process.env.STEAM_WEB_API_KEY;
+  delete process.env.STEAM_ID;
+  process.env.PLUGIN_DATA = dir;
+  const fromFile = await callTool("steam_get_friends", {});
+  assert.equal(fromFile.payload.error, "missing_key");
+  assert.equal(fetches.length, 0, "config.json placeholder must not be sent as a key");
+  rmSync(dir, { recursive: true, force: true });
+  delete process.env.PLUGIN_DATA;
+}
 
 globalThis.fetch = origFetch;
 delete process.env.STEAM_WEB_API_KEY;

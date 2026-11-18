@@ -1,6 +1,6 @@
 # VERIFY
 
-Proven in this VM on 2026-09-03. Commands run from the plugin root (`/workspace` here; locally, the real directory `~/.cursor/plugins/local/steam-web`, not a symlink).
+Proven in this VM on 2026-09-03. The 0.2.10 npx spawn, placeholder-key, and packed-bin checks were re-run on 2026-11-18. Commands run from the plugin root (`/workspace` here; locally, the real directory `~/.cursor/plugins/local/steam-web`, not a symlink).
 
 ## Environment
 
@@ -24,9 +24,9 @@ Validated with Ajv 2020-12 (`ajv@8` installed only under `/tmp/steam-web-verify`
 | `plugin.json` | **PASS** (`$id` `https://agent-plugins.org/schemas/1.0.0/plugin.schema.json`) |
 | `mcp.json` | **PASS** (`$id` `https://agent-plugins.org/schemas/1.0.0/mcp.schema.json`) |
 
-`plugin.json` uses the closed 1.0.0 field set (`author` is an object). `mcp.json` interpolates `${STEAM_WEB_API_KEY}` and `${STEAM_ID}`; those are placeholders, not committed secrets. Public spawn is spec-shaped: `command` `node`, `args` `["./server.mjs"]`, **no `cwd` key**. Not used: `cmd.exe`, `./scripts/run-mcp.cmd` as `command`, `scripts\run-mcp.cmd` as the `mcp.json` entry, `${PLUGIN_ROOT}` in `command` or args, `"cwd": "${PLUGIN_ROOT}"`, a hardcoded `C:\Program Files\nodejs\node.exe`, `env.PATH`, or a bundled linux binary.
+`plugin.json` uses the closed 1.0.0 field set (`author` is an object). `mcp.json` interpolates `${STEAM_WEB_API_KEY}` and `${STEAM_ID}`; those are placeholders, not committed secrets. Public spawn is `command` `npx`, `args` `["-y", "github:TheAbsentTourist/steam-web"]`, **no `cwd` key** and no local path. Not used: `node ./server.mjs` as the shipped command, `cmd.exe`, `./scripts/run-mcp.cmd` as `command`, `scripts\run-mcp.cmd` as the `mcp.json` entry, `${PLUGIN_ROOT}` in `command` or args, `"cwd": "${PLUGIN_ROOT}"`, a hardcoded `C:\Program Files\nodejs\node.exe`, `env.PATH`, or a bundled linux binary.
 
-**Windows Cursor plugin MCP spawn is currently broken** for portable configs. Cursor's Windows plugin MCP host does not match the Agent Plugins spec. Evidence (maintainer machine, not this VM): `${PLUGIN_ROOT}` is not expanded in args; default cwd is not the plugin root; `./` as `command` is resolved against the Cursor install dir; spawn PATH has no `node`. Local workaround — **not** in public `mcp.json` — is a user MCP in `~/.cursor/mcp.json` with absolute `node.exe` + absolute installed plugin `server.mjs` until Cursor fixes plugin spawn. Grok Bot is unchanged (runs `server.mjs` directly). macOS/Linux Cursor AppImage/Flatpak stdio MCP is also not supported (prior `ENOENT` even for existing host binaries).
+**Windows Cursor plugin MCP spawn is currently broken** for some portable configs (`spawn npx ENOENT` when `npx` is not on the plugin spawn PATH). Local workaround — **not** in public `mcp.json` — is a user MCP in `~/.cursor/mcp.json` with absolute `node.exe` + absolute installed plugin `server.mjs`. Grok Bot Directory runs the shipped `npx` command as written. macOS/Linux Cursor AppImage/Flatpak stdio MCP is also not supported (prior `ENOENT` even for existing host binaries).
 
 ## 2. Syntax
 
@@ -54,7 +54,7 @@ The script:
 | initialize `serverInfo.name` = `steam-web` | **PASS** |
 | `protocolVersion` | `2024-11-05` |
 | `tools/list` includes `steam_get_news` (35 tools, including store/tag/follow/economy) | **PASS** |
-| MCP title also on `api.steampowered.com` | **PASS** — `Australian Hightower Highjinx 2026` |
+| MCP title also on `api.steampowered.com` | **PASS** — 2026-11-18 re-run overlapped `Team Fortress 2 spinoff Mann Versus Zombies looks so good it could almost be official`; `serverInfo.version` `0.2.10` |
 | `steam_get_app_details` Factorio 427520 `cc=us` (keyless storefront) | **PASS** — name Factorio, `$35.00`, no HTML blobs |
 | `steam_get_app_details` TF2 440 | **PASS** — `is_free` true, no `price_overview` |
 
@@ -64,14 +64,26 @@ The script:
 node scripts/mcp-path-test.mjs
 ```
 
-Asserts `command` is `node` with `args` `["./server.mjs"]`, **no `cwd`** (or `cwd` not `${PLUGIN_ROOT}`), command/args do not contain `${PLUGIN_ROOT}`, `cmd.exe`, or `scripts\run-mcp.cmd` as the `mcp.json` entry, env placeholders `STEAM_WEB_API_KEY` / `STEAM_ID` unchanged, `bin/steam-web-mcp` is absent, initialize works via `node ./server.mjs` (Grok Bot / direct-run), and the POSIX `scripts/run-mcp` helper still finds Node when PATH has none. Does **not** assert Windows `cmd.exe` spawn of `run-mcp.cmd` as the Cursor path. Optional `.cmd` helpers may still be content-checked; on this host `.cmd` spawn is skipped (no `cmd.exe`).
+Asserts `command` is `npx` with `args` `["-y", "github:TheAbsentTourist/steam-web"]`, **no `cwd`**, args are not blank or local paths, command/args do not contain `${PLUGIN_ROOT}`, `cmd.exe`, or `scripts\run-mcp.cmd` as the `mcp.json` entry, env placeholders `STEAM_WEB_API_KEY` / `STEAM_ID` unchanged, `package.json` `bin` is `server.mjs` (executable, node shebang), `skills/steam-web/SKILL.md` exists, `bin/steam-web-mcp` is absent, initialize still works via a direct `node ./server.mjs` spawn of this checkout, and the POSIX `scripts/run-mcp` helper still finds Node when PATH has none. Does **not** assert Windows `cmd.exe` spawn of `run-mcp.cmd` as the Cursor path. Optional `.cmd` helpers may still be content-checked; on this host `.cmd` spawn is skipped (no `cmd.exe`).
+
+**PASS**
+
+## 5. Packed bin (`npm pack`, then npx from `/tmp`)
+
+`npm pack` includes executable `server.mjs` (`rwxr-xr-x`) and `skills/steam-web/SKILL.md`. From `/tmp`, with `STEAM_WEB_API_KEY` and `STEAM_ID` set to the literal placeholders `${STEAM_WEB_API_KEY}` and `${STEAM_ID}`:
+
+```bash
+npx -y --package /path/to/steam-web-0.2.10.tgz steam-web
+```
+
+MCP `initialize` returned `serverInfo` `steam-web` `0.2.10`. `tools/list` returned **35** tools. `steam_get_friends` with no id returned `missing_key` (the placeholder was not sent as a key).
 
 **PASS**
 
 ## Cannot prove here
 
 - Cursor **Customize** UI / local plugin loader on a user machine (`~/.cursor/plugins/local/steam-web` as a real directory, not a symlink)
-- Windows Cursor plugin MCP spawn of portable `node` + `./server.mjs` (host is broken: `${PLUGIN_ROOT}` unexpanded, cwd not plugin root, `./` vs install dir, spawn PATH without `node`)
+- Windows Cursor plugin MCP spawn when `npx` is missing from the plugin spawn PATH (`spawn npx ENOENT`)
 - User-MCP workaround: absolute `node.exe` + absolute `~\.cursor\plugins\local\steam-web\server.mjs` in `~\.cursor\mcp.json`
 - Optional terminal helpers `scripts/run-mcp.cmd` / `scripts/find-node.cmd` on Windows (`call scripts\find-node.cmd` persisting `NODE`; missing-node stderr without `. was unexpected`)
 - Linux Cursor AppImage / Flatpak stdio MCP spawn (not supported: `ENOENT` even for existing host binaries)

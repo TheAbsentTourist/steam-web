@@ -4,15 +4,16 @@
  * (https://api.steampowered.com) plus a dedicated keyless GET to
  * https://store.steampowered.com/api/appdetails (never via steamGet).
  * Credentials: process.env, then $PLUGIN_DATA/config.json.
+ * Blank and unexpanded ${VAR} values are unset. Package files are not read from process.cwd().
  * Service interfaces use input_json. key stays a query param, never inside input_json.
  */
-import { readFileSync } from "node:fs";
+import { readFileSync, realpathSync } from "node:fs";
 import { join } from "node:path";
 import { stdin, stdout } from "node:process";
-import { pathToFileURL } from "node:url";
+import { fileURLToPath, pathToFileURL } from "node:url";
 
 const PROTOCOL_VERSION = "2024-11-05";
-const SERVER_INFO = { name: "steam-web", version: "0.2.9" };
+const SERVER_INFO = { name: "steam-web", version: "0.2.10" };
 const API_HOST = "https://api.steampowered.com";
 const STOREFRONT_APPDETAILS = "https://store.steampowered.com/api/appdetails";
 const TIMEOUT_MS = 15_000;
@@ -34,10 +35,23 @@ function loadFileConfig() {
   }
 }
 
+/**
+ * Blank and unexpanded plugin placeholders (`${STEAM_WEB_API_KEY}`) are unset.
+ * A host that does not expand mcp.json `${VAR}` must not become an API key or SteamID.
+ */
+function isUnsetSetting(value) {
+  if (value == null) return true;
+  const s = String(value).trim();
+  return s === "" || /^\$\{[^}]+\}$/.test(s);
+}
+
+/** Env wins; otherwise $PLUGIN_DATA/config.json. Never invent a key or SteamID. */
 function cred(name) {
-  if (process.env[name]) return String(process.env[name]);
+  const fromEnv = process.env[name];
+  if (!isUnsetSetting(fromEnv)) return String(fromEnv);
   const fromFile = loadFileConfig()[name];
-  return fromFile ? String(fromFile) : "";
+  if (fromFile && !isUnsetSetting(fromFile)) return String(fromFile);
+  return "";
 }
 
 function apiKey() {
@@ -2118,7 +2132,13 @@ function pump() {
 
 function startedAsMain() {
   try {
-    return Boolean(process.argv[1]) && import.meta.url === pathToFileURL(process.argv[1]).href;
+    if (!process.argv[1]) return false;
+    const argvUrl = pathToFileURL(process.argv[1]).href;
+    if (import.meta.url === argvUrl) return true;
+    // npx runs the bin through a symlink in its cache; compare real paths.
+    const argvReal = pathToFileURL(realpathSync(process.argv[1])).href;
+    const selfReal = pathToFileURL(realpathSync(fileURLToPath(import.meta.url))).href;
+    return argvReal === selfReal;
   } catch {
     return true;
   }
