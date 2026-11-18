@@ -1,6 +1,6 @@
 # steam-web
 
-**0.2.9** — unofficial Steam Web API plugin for Cursor and other MCP hosts (including Grok Bot).
+**0.2.10** — unofficial Steam Web API plugin for Cursor and other MCP hosts (including Grok Bot).
 
 Ask about libraries, playtime, achievements, friends, profiles, Workshop items, trades, store pages, tags, followed games, and in-game item class metadata. Live data from Valve’s official Web API (`https://api.steampowered.com`) plus keyless storefront details (`https://store.steampowered.com/api/appdetails`).
 
@@ -38,16 +38,31 @@ Then reload Cursor (**Developer: Reload Window**). You should see **Steam Web** 
 
 **Teams / Enterprise:** your admin may need to allow local plugin imports.
 
-Public `mcp.json` is the portable spawn other hosts already use:
+The plugin’s `mcp.json` starts the server with npx. There is no local path and no `cwd`. Any host that can run `npx` uses this block as written, including the Grok Bot Directory:
 
 ```json
-"command": "node",
-"args": ["./server.mjs"]
+{
+  "mcpServers": {
+    "steam-web": {
+      "type": "stdio",
+      "command": "npx",
+      "args": ["-y", "github:TheAbsentTourist/steam-web"],
+      "env": {
+        "STEAM_WEB_API_KEY": "${STEAM_WEB_API_KEY}",
+        "STEAM_ID": "${STEAM_ID}"
+      }
+    }
+  }
+}
 ```
 
-### Windows: make the MCP actually start
+`npx -y github:TheAbsentTourist/steam-web` installs this package from GitHub and runs the `steam-web` bin (`server.mjs`). **We cannot ship your machine’s Node path in the repo.** If a host leaves a `${VAR}` placeholder unexpanded, or sets it to a blank string, the server treats that value as unset. Other hosts can paste the same server block into their MCP config without cloning.
 
-Cursor on Windows often cannot start this plugin’s MCP from that portable config alone (it doesn’t find `node`, and plugin path setup is unreliable). The reliable workaround is a **user** MCP entry with full paths.
+### Windows: npx, then a local workaround if spawn fails
+
+The shipped config above uses `npx`, so Cursor does not have to resolve `./server.mjs` from the plugin folder. If the MCP process cannot find `npx` on PATH (`spawn npx ENOENT`), use the absolute-path workaround below on that machine only. Do not commit those paths.
+
+Cursor on Windows often cannot start this plugin’s MCP until Node is on the spawn PATH. The reliable workaround is a **user** MCP entry with full paths.
 
 Create or edit `%USERPROFILE%\.cursor\mcp.json`:
 
@@ -70,7 +85,7 @@ Then set your API key (and optional SteamID) under **Plugins → Configure**, or
 
 ### Other MCP hosts (Grok Bot, etc.)
 
-Run `node ./server.mjs` from the plugin directory (same shape as public `mcp.json`). Set `STEAM_WEB_API_KEY` and optional `STEAM_ID` in the environment the host inherits.
+Use the shipped `npx` block above. Set `STEAM_WEB_API_KEY` and optional `STEAM_ID` in the environment the host inherits. A blank value or an unexpanded `${STEAM_WEB_API_KEY}` / `${STEAM_ID}` is treated as unset, not as an API key or SteamID.
 
 ### API key and default SteamID
 
@@ -211,3 +226,5 @@ Private profiles and private friend lists come back as `private_or_unavailable` 
 - Email: chucktastictime@gmail.com
 
 Community project — best-effort support, no SLA.
+
+More detail: [CHANGELOG-0.2.10.md](CHANGELOG-0.2.10.md), [TERMS.md](TERMS.md), [PRIVACY.md](PRIVACY.md), [SECURITY.md](SECURITY.md), [VERIFY.md](VERIFY.md).

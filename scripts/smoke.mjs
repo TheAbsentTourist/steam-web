@@ -1,7 +1,8 @@
 #!/usr/bin/env node
 /**
  * Live MCP smoke: initialize, tools/list, steam_get_news appid 440.
- * Spawns node ./server.mjs (Grok Bot / direct-run path).
+ * Spawns node ./server.mjs from this checkout (direct-run path).
+ * Shipped mcp.json uses npx; this script does not.
  * Asserts a title that also appears on api.steampowered.com. Does not fake data.
  */
 import { spawn } from "node:child_process";
@@ -110,6 +111,10 @@ const call = replies.find((m) => m.id === 3);
 
 if (init?.result?.serverInfo?.name !== "steam-web") {
   console.error("FAIL initialize serverInfo", init);
+  process.exit(1);
+}
+if (init?.result?.serverInfo?.version !== "0.2.10") {
+  console.error("FAIL initialize version", init?.result?.serverInfo?.version);
   process.exit(1);
 }
 const names = (list?.result?.tools ?? []).map((t) => t.name);

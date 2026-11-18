@@ -1,7 +1,7 @@
 {
   "name": "steam-web",
   "displayName": "Steam Web",
-  "version": "0.2.9",
+  "version": "0.2.10",
   "description": "Unofficial Steam Web API reader: library, playtime, achievements, friends, profiles, workshop, trades, store catalog/prices, tags, and followed games. Not affiliated with Valve.",
   "author": {
     "name": "TheAbsentTourist",

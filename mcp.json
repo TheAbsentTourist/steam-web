@@ -3,8 +3,8 @@
   "mcpServers": {
     "steam-web": {
       "type": "stdio",
-      "command": "node",
-      "args": ["./server.mjs"],
+      "command": "npx",
+      "args": ["-y", "github:TheAbsentTourist/steam-web"],
       "env": {
         "STEAM_WEB_API_KEY": "${STEAM_WEB_API_KEY}",
         "STEAM_ID": "${STEAM_ID}"

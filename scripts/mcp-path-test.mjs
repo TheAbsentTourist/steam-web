@@ -2,16 +2,16 @@
 /**
  * Offline mcp.json launcher checks. No Steam, no secrets.
  *
- * Public Cursor mcp.json spawn is spec-shaped: command node, args ./server.mjs.
- * No cwd. No cmd.exe. No ./scripts/run-mcp.cmd as command. No ${PLUGIN_ROOT}
- * in command or args. Grok Bot still runs node ./server.mjs.
+ * Public mcp.json must stay portable:
+ *   command npx (uvx, bunx, docker, node, or cmd.exe also accepted as portable)
+ *   args without machine-absolute paths, local relative paths, or blanks
+ *   no ${PLUGIN_ROOT}
+ *   no cwd — npx does not launch from the plugin folder
  *
- * Windows Cursor plugin MCP spawn is currently broken for portable configs.
+ * Windows Cursor plugin MCP spawn is currently broken for some hosts.
  * Do not assert cmd.exe / scripts\run-mcp.cmd as the Cursor mcp.json entry.
  * scripts/run-mcp.cmd and scripts/find-node.cmd are optional terminal helpers
- * only — not the Cursor path until the host is fixed.
- *
- * cwd is omitted or not ${PLUGIN_ROOT}.
+ * only — not the shipped mcp.json command.
  */
 import assert from "node:assert/strict";
 import { spawn, spawnSync } from "node:child_process";
@@ -27,7 +27,12 @@ const plugin = JSON.parse(readFileSync(join(root, ".cursor-plugin/plugin.json"),
 const server = mcp.mcpServers?.["steam-web"];
 assert.ok(server, "steam-web server missing from mcp.json");
 
-assert.equal(server.command, "node");
+const portableCommands = new Set(["npx", "uvx", "bunx", "docker", "node", "cmd.exe"]);
+assert.ok(
+  portableCommands.has(server.command),
+  `command must be portable (npx, uvx, bunx, docker, node, or cmd.exe), got ${JSON.stringify(server.command)}`,
+);
+assert.equal(server.command, "npx");
 assert.notEqual(server.command, "cmd.exe");
 assert.notEqual(server.command, "cmd");
 assert.notEqual(server.command, "./scripts/run-mcp.cmd");
@@ -44,7 +49,15 @@ assert.doesNotMatch(mcpRaw, /C:\\\\Program Files|C:\\Program Files/i);
 assert.doesNotMatch(mcpRaw, /cmd\.exe/);
 assert.doesNotMatch(mcpRaw, /run-mcp\.cmd/);
 assert.doesNotMatch(mcpRaw, /\$\{PLUGIN_ROOT\}/);
-assert.deepEqual(server.args, ["./server.mjs"]);
+assert.deepEqual(server.args, ["-y", "github:TheAbsentTourist/steam-web"]);
+assert.equal(server.cwd, undefined, "shipped mcp.json must not set cwd");
+for (const arg of server.args) {
+  const text = String(arg);
+  assert.notEqual(text.trim(), "", "args must not contain blanks");
+  assert.doesNotMatch(text, /^\.\.?[/\\]/, "args must not be local paths");
+  assert.doesNotMatch(text, /C:\\Users/i, "args must not contain C:\\Users");
+  assert.doesNotMatch(text, /Program Files/i, "args must not contain Program Files");
+}
 assert.ok(!server.args.some((a) => String(a).includes("${PLUGIN_ROOT}")));
 assert.ok(!server.args.some((a) => String(a).includes("cmd.exe")));
 assert.ok(!server.args.some((a) => String(a).includes("scripts\\run-mcp.cmd")));
@@ -65,6 +78,15 @@ assert.equal(plugin.variables?.properties?.NODE, undefined);
 assert.ok(!plugin.variables?.required?.includes("NODE"));
 assert.ok(plugin.variables.required.includes("STEAM_WEB_API_KEY"));
 
+const pkg = JSON.parse(readFileSync(join(root, "package.json"), "utf8"));
+assert.equal(pkg.bin?.["steam-web"], "server.mjs");
+for (const rel of ["server.mjs", "skills", "assets", "LICENSE", "README.md"]) {
+  assert.ok(pkg.files?.includes(rel), `package.json files must include ${rel}`);
+}
+const serverFile = join(root, "server.mjs");
+assert.ok(readFileSync(serverFile, "utf8").startsWith("#!/usr/bin/env node\n"), "server.mjs needs a node shebang");
+assert.ok(statSync(serverFile).mode & 0o111, "server.mjs must be executable");
+assert.equal(existsSync(join(root, "skills/steam-web/SKILL.md")), true, "skills/steam-web/SKILL.md is required");
 assert.equal(existsSync(join(root, "bin/steam-web-mcp")), false, "dead linux bun binary must not be in the repo");
 assert.equal(existsSync(join(root, "scripts/build-mcp")), false, "build-mcp existed only for the bun binary");
 assert.equal(existsSync(join(root, ".gitattributes")), false, ".gitattributes existed only for the bun binary");
@@ -250,7 +272,7 @@ function runCmdC(commandLine, env = process.env) {
 const prevCwd = process.cwd();
 process.chdir(tmpdir());
 try {
-  // Grok Bot / public mcp.json spawn: node ./server.mjs
+  // Direct server.mjs start from this checkout. Shipped mcp.json uses npx, not this path.
   await spawnMcp("node", ["./server.mjs"], process.env, { cwd: root });
   // Optional POSIX terminal helper — not required by mcp.json
   await spawnMcp("/bin/sh", ["./scripts/run-mcp"], process.env, { cwd: root });

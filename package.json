@@ -1,6 +1,6 @@
 {
   "name": "steam-web",
-  "version": "0.2.9",
+  "version": "0.2.10",
   "private": false,
   "type": "module",
   "description": "Unofficial Steam Web API reader plugin. Not affiliated with Valve.",
@@ -20,5 +20,21 @@
     "name": "TheAbsentTourist",
     "email": "chucktastictime@gmail.com",
     "url": "https://github.com/TheAbsentTourist"
+  },
+  "license": "MIT",
+  "bin": {
+    "steam-web": "server.mjs"
+  },
+  "files": [
+    "server.mjs",
+    "skills",
+    "assets",
+    "LICENSE",
+    "README.md"
+  ],
+  "scripts": {
+    "smoke": "node ./scripts/smoke.mjs",
+    "check": "node --check ./server.mjs",
+    "mcp-path": "node ./scripts/mcp-path-test.mjs"
   }
 }
